@@ -131,7 +131,7 @@ export function ProductSection({
       <div className="product-grid">
         {filteredProducts.map((product) => (
           <article key={product.id} className="product-card">
-            <img className="product-image" src={product.image || '/images/default-product.svg'} alt={product.name} />
+            <img className="product-image" src={product.image} alt={product.name} loading="lazy" />
             <p className="label">{product.category}</p>
             {product.inStock === false && <p className="stock-badge">Out of stock</p>}
             <h3>{product.name}</h3>

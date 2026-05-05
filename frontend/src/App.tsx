@@ -95,7 +95,7 @@ function ProductDetailPage({
   return (
     <main className="shell page-block">
       <section className="pdp-layout">
-        <img className="pdp-image" src={product.image || '/images/default-product.svg'} alt={product.name} />
+        <img className="pdp-image" src={product.image} alt={product.name} />
         <article className="pdp-main">
           <p className="label">{product.category}</p>
           <h1>{product.name}</h1>
@@ -120,7 +120,7 @@ function ProductDetailPage({
         </article>
         <article className="pdp-card">
           <h3>Usage</h3>
-          <p>Mix one scoop with 300-400ml of cold water.</p>
+          <p>{product.usage ?? 'Mix one scoop with 300-400ml of cold water.'}</p>
           <p>Use daily for best performance and recovery results.</p>
         </article>
       </section>
@@ -151,7 +151,7 @@ function ProductDetailPage({
           <div className="product-grid">
             {relatedProducts.map((related) => (
               <article key={related.id} className="product-card">
-                <img className="product-image" src={related.image || '/images/default-product.svg'} alt={related.name} />
+                <img className="product-image" src={related.image} alt={related.name} />
                 <p className="label">{related.category}</p>
                 <h3>{related.name}</h3>
                 <p>{related.description}</p>
@@ -389,12 +389,12 @@ export default function App() {
                         style={{
                           backgroundImage:
                             index === 0
-                              ? "url('/images/whey.svg')"
+                              ? "url('https://images.unsplash.com/photo-1594381898411-846e7d193883?auto=format&fit=crop&w=1000&q=80')"
                               : index === 1
-                                ? "url('/images/preworkout.svg')"
+                                ? "url('https://images.unsplash.com/photo-1579758629938-03607ccdbaba?auto=format&fit=crop&w=1000&q=80')"
                                 : index === 2
-                                  ? "url('/images/creatine.svg')"
-                                  : "url('/images/default-product.svg')",
+                                  ? "url('https://images.unsplash.com/photo-1517344884509-a0c97ec11bcc?auto=format&fit=crop&w=1000&q=80')"
+                                  : "url('https://images.unsplash.com/photo-1594737625785-c936d2e6cd17?auto=format&fit=crop&w=1000&q=80')",
                         }}
                       >
                         <span>{category}</span>

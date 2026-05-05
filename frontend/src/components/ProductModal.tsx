@@ -10,7 +10,7 @@ export function ProductModal({ product, onClose, onAdd }: ProductModalProps) {
   return (
     <div className="overlay" onClick={onClose}>
       <section className="modal" onClick={(e) => e.stopPropagation()}>
-        <img className="modal-image" src={product.image || '/images/default-product.svg'} alt={product.name} />
+        <img className="modal-image" src={product.image} alt={product.name} loading="lazy" />
         <h3>{product.name}</h3>
         <p className="label">{product.category}</p>
         <p>{product.description}</p>
