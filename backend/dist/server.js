@@ -279,20 +279,20 @@ app.post('/api/auth/refresh', async (req, res) => {
     try {
         const token = req.cookies?.fusion_refresh;
         if (!token) {
-            res.status(401).json({ ok: false, message: 'Missing refresh token' });
+            res.json({ ok: false });
             return;
         }
         const payload = jsonwebtoken_1.default.verify(token, JWT_REFRESH_SECRET);
         const tokenResult = await pool_1.pool.query('SELECT id FROM refresh_tokens WHERE token = $1 AND expires_at > now()', [token]);
         if (!tokenResult.rows.length) {
-            res.status(401).json({ ok: false, message: 'Invalid refresh token' });
+            res.json({ ok: false });
             return;
         }
         const accessToken = createAccessToken(payload);
         res.json({ ok: true, accessToken });
     }
     catch {
-        res.status(401).json({ ok: false, message: 'Refresh failed' });
+        res.json({ ok: false });
     }
 });
 app.post('/api/auth/logout', async (req, res) => {

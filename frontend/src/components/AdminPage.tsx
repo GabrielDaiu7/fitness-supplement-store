@@ -40,7 +40,7 @@ export function AdminPage() {
           <article className="product-card" key={product.id}>
             <h3>{product.name}</h3>
             <p>{product.category}</p>
-            <p>${product.price.toFixed(2)}</p>
+            <p>${Number(product.price).toFixed(2)}</p>
             <div className="actions">
               <button className="btn btn-ghost" onClick={() => patchProduct(product.id, { inStock: !product.inStock })}>
                 {product.inStock ? 'Mark OOS' : 'Mark In Stock'}
@@ -48,7 +48,7 @@ export function AdminPage() {
               <button className="btn btn-ghost" onClick={() => patchProduct(product.id, { featured: !product.featured })}>
                 {product.featured ? 'Unfeature' : 'Feature'}
               </button>
-              <button className="btn btn-solid" onClick={() => patchProduct(product.id, { price: Number((product.price + 1).toFixed(2)) })}>
+              <button className="btn btn-solid" onClick={() => patchProduct(product.id, { price: Number((Number(product.price) + 1).toFixed(2)) })}>
                 +$1
               </button>
             </div>

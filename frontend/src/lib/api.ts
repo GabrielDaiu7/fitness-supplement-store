@@ -125,7 +125,8 @@ export async function refreshSession(): Promise<boolean> {
     credentials: 'include',
   });
   if (!response.ok) return false;
-  const data = (await response.json()) as { accessToken: string };
+  const data = (await response.json()) as { accessToken?: string };
+  if (!data.accessToken) return false;
   accessToken = data.accessToken;
   return true;
 }
@@ -165,7 +166,10 @@ export async function fetchAdminProducts(): Promise<Array<{ id: number; name: st
   const data = (await response.json()) as {
     products: Array<{ id: number; name: string; category: string; price: number; inStock: boolean; featured: boolean }>;
   };
-  return data.products;
+  return data.products.map((product) => ({
+    ...product,
+    price: Number(product.price),
+  }));
 }
 
 export async function updateAdminProduct(
