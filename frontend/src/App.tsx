@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { AccountPage } from './components/AccountPage';
+import { AdminPage } from './components/AdminPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutFlow } from './components/CheckoutFlow';
 import { Header } from './components/Header';
 import { LoginModal } from './components/LoginModal';
-import { ProductModal } from './components/ProductModal';
 import { ProductSection } from './components/ProductSection';
 import { fallbackProducts } from './data/storefront';
-import { fetchCategories, fetchProducts, submitCheckout } from './lib/api';
-import type { CartItem, Product } from './types';
+import { fetchCategories, fetchProducts, getMe, login, logout, register, submitAdvancedCheckout } from './lib/api';
+import type { CartItem, Product, User } from './types';
 
 function toCategorySlug(category: string): string {
   return category.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -58,26 +59,136 @@ function CategoryPage({
   );
 }
 
+function ProductDetailPage({
+  products,
+  onAdd,
+}: {
+  products: Product[];
+  onAdd: (product: Product) => void;
+}) {
+  const navigate = useNavigate();
+  const { productId } = useParams();
+  const product = products.find((entry) => entry.id === Number(productId));
+
+  if (!product) return <Navigate to="/" replace />;
+
+  const relatedProducts = products
+    .filter((entry) => entry.category === product.category && entry.id !== product.id)
+    .slice(0, 3);
+
+  const ingredients = product.ingredients ?? ['Active Performance Blend', 'Electrolyte Matrix', 'Digestive Enzyme Support'];
+  const faqs =
+    product.faqs ??
+    [
+      { q: 'When should I take this?', a: 'Use 20-30 minutes before training or as part of your daily routine.' },
+      { q: 'Is it third-party tested?', a: 'Yes, each batch is tested for purity and label accuracy.' },
+      { q: 'Can I stack this with other products?', a: 'Yes, this product is designed to pair with protein and recovery formulas.' },
+    ];
+  const reviews =
+    product.reviews?.map((review) => ({ name: review.name, score: review.rating, body: review.text })) ??
+    [
+      { name: 'Alex M.', score: 5, body: 'Noticeable boost in training output and better recovery by week two.' },
+      { name: 'Sam R.', score: 5, body: 'Tastes great and mixes fast. Solid daily staple.' },
+      { name: 'Jordan T.', score: 4, body: 'Clean formula and no crash. Works exactly as expected.' },
+    ];
+
+  return (
+    <main className="shell page-block">
+      <section className="pdp-layout">
+        <img className="pdp-image" src={product.image || '/images/default-product.svg'} alt={product.name} />
+        <article className="pdp-main">
+          <p className="label">{product.category}</p>
+          <h1>{product.name}</h1>
+          <p className="pdp-description">{product.description}</p>
+          <p className="pdp-price">${product.price.toFixed(2)}</p>
+          <div className="pdp-certs">
+            {(product.certifications ?? ['Lab Tested', 'GMP']).map((badge) => (
+              <span key={badge}>{badge}</span>
+            ))}
+          </div>
+          <div className="pdp-actions">
+            <button className="btn btn-solid" onClick={() => onAdd(product)}>Add to Cart</button>
+            <button className="btn btn-ghost" onClick={() => navigate(-1)}>Back</button>
+          </div>
+        </article>
+      </section>
+
+      <section className="pdp-grid">
+        <article className="pdp-card">
+          <h3>Ingredients</h3>
+          {ingredients.map((item) => <p key={item}>{item}</p>)}
+        </article>
+        <article className="pdp-card">
+          <h3>Usage</h3>
+          <p>Mix one scoop with 300-400ml of cold water.</p>
+          <p>Use daily for best performance and recovery results.</p>
+        </article>
+      </section>
+
+      <section className="pdp-card">
+        <h3>FAQs</h3>
+        {faqs.map((faq) => (
+          <article key={faq.q} className="faq-row">
+            <strong>{faq.q}</strong>
+            <p>{faq.a}</p>
+          </article>
+        ))}
+      </section>
+
+      <section className="pdp-card">
+        <h3>Reviews</h3>
+        {reviews.map((review) => (
+          <article key={review.name} className="review-row">
+            <p>{'*'.repeat(review.score)} by {review.name}</p>
+            <span>{review.body}</span>
+          </article>
+        ))}
+      </section>
+
+      {relatedProducts.length > 0 && (
+        <section className="pdp-card">
+          <h3>Related Products</h3>
+          <div className="product-grid">
+            {relatedProducts.map((related) => (
+              <article key={related.id} className="product-card">
+                <img className="product-image" src={related.image || '/images/default-product.svg'} alt={related.name} />
+                <p className="label">{related.category}</p>
+                <h3>{related.name}</h3>
+                <p>{related.description}</p>
+                <div className="product-foot">
+                  <span>${related.price.toFixed(2)}</span>
+                  <div className="actions">
+                    <button className="btn btn-ghost" onClick={() => navigate(`/product/${related.id}`)}>View</button>
+                    <button className="btn btn-solid mini" onClick={() => onAdd(related)}>Add</button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+    </main>
+  );
+}
+
 export default function App() {
   const navigate = useNavigate();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<string[]>(['All']);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [checkoutState, setCheckoutState] = useState<'idle' | 'submitting'>('idle');
   const [loginOpen, setLoginOpen] = useState(false);
-  const [account, setAccount] = useState<{ name: string; email: string } | null>(null);
+  const [account, setAccount] = useState<User | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   useEffect(() => {
     const savedCart = localStorage.getItem('cart_items');
     if (savedCart) setCartItems(JSON.parse(savedCart) as CartItem[]);
-    const savedAccount = localStorage.getItem('account_user');
-    if (savedAccount) setAccount(JSON.parse(savedAccount) as { name: string; email: string });
+    getMe().then((user) => setAccount(user));
   }, []);
 
   useEffect(() => {
@@ -101,14 +212,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('cart_items', JSON.stringify(cartItems));
   }, [cartItems]);
-
-  useEffect(() => {
-    if (!account) {
-      localStorage.removeItem('account_user');
-      return;
-    }
-    localStorage.setItem('account_user', JSON.stringify(account));
-  }, [account]);
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const cartTotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
@@ -138,16 +241,27 @@ export default function App() {
     setCartItems((prev) => prev.filter((item) => item.id !== productId));
   }
 
-  async function handleCheckout() {
+  async function handleCheckout(payload: {
+    shipping: { fullName: string; email: string; address: string; city: string; zip: string };
+    promoCode: string;
+    shippingMethod: 'standard' | 'express';
+    subscribeFrequency?: string;
+  }) {
     if (!cartItems.length || checkoutState === 'submitting') return;
     try {
       setCheckoutState('submitting');
-      await submitCheckout(cartItems);
+      await submitAdvancedCheckout({
+        items: cartItems.map((item) => ({ id: item.id, quantity: item.quantity })),
+        promoCode: payload.promoCode,
+        shippingMethod: payload.shippingMethod,
+        subscribeFrequency: payload.subscribeFrequency,
+        shipping: payload.shipping,
+      });
       setCartItems([]);
       setCheckoutOpen(false);
       setCartOpen(false);
     } catch {
-      setError('Checkout endpoint is not available yet.');
+      setError('Checkout failed. Please login and verify details.');
     } finally {
       setCheckoutState('idle');
     }
@@ -161,37 +275,34 @@ export default function App() {
     setLoginOpen(true);
   }
 
-  function handleLogin(email: string, password: string): string | null {
-    const usersRaw = localStorage.getItem('account_users');
-    const users = usersRaw ? (JSON.parse(usersRaw) as Array<{ name: string; email: string; password: string }>) : [];
-    const user = users.find((entry) => entry.email === email && entry.password === password);
-    if (!user) {
-      return 'Invalid email or password. Try register if you are new.';
+  async function handleLogin(email: string, password: string): Promise<string | null> {
+    try {
+      const user = await login(email, password);
+      setError('');
+      setAccount(user);
+      setAccountMenuOpen(false);
+      setLoginOpen(false);
+      return null;
+    } catch {
+      return 'Invalid email or password.';
     }
-    setError('');
-    setAccount({ name: user.name, email: user.email });
-    setAccountMenuOpen(false);
-    setLoginOpen(false);
-    return null;
   }
 
-  function handleRegister(name: string, email: string, password: string): string | null {
-    const usersRaw = localStorage.getItem('account_users');
-    const users = usersRaw ? (JSON.parse(usersRaw) as Array<{ name: string; email: string; password: string }>) : [];
-    const alreadyExists = users.some((entry) => entry.email === email);
-    if (alreadyExists) {
-      return 'This email already exists. Please login instead.';
+  async function handleRegister(name: string, email: string, password: string): Promise<string | null> {
+    try {
+      const user = await register(name, email, password);
+      setError('');
+      setAccount(user);
+      setAccountMenuOpen(false);
+      setLoginOpen(false);
+      return null;
+    } catch {
+      return 'Unable to register with this email.';
     }
-    const nextUsers = [...users, { name, email, password }];
-    localStorage.setItem('account_users', JSON.stringify(nextUsers));
-    setError('');
-    setAccount({ name, email });
-    setAccountMenuOpen(false);
-    setLoginOpen(false);
-    return null;
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    await logout();
     setAccount(null);
     setAccountMenuOpen(false);
   }
@@ -205,6 +316,7 @@ export default function App() {
         onAccountClick={handleAccountClick}
         accountLabel={account ? `HI ${account.name.split(' ')[0].toUpperCase()}` : 'ACCT'}
         loggedIn={Boolean(account)}
+        isAdmin={Boolean(account?.isAdmin)}
         onLogout={handleLogout}
         accountMenuOpen={accountMenuOpen}
       />
@@ -240,7 +352,7 @@ export default function App() {
                   {!loading && error && <p className="status">{error}</p>}
                   <div className="seller-grid">
                     {bestSellers.map((product, i) => (
-                      <article key={product.id} className="seller-card fade-up" onClick={() => setSelectedProduct(product)}>
+                      <article key={product.id} className="seller-card fade-up" onClick={() => navigate(`/product/${product.id}`)}>
                         <span className="best-tag">Best Seller</span>
                         <img src={product.image} alt={product.name} />
                         <h3>{product.name}</h3>
@@ -343,9 +455,18 @@ export default function App() {
 
         <Route
           path="/category/:categorySlug"
-          element={<CategoryPage categories={categories} products={products} loading={loading} error={error} onDetails={setSelectedProduct} onAdd={addToCart} />}
+          element={<CategoryPage categories={categories} products={products} loading={loading} error={error} onDetails={(product) => navigate(`/product/${product.id}`)} onAdd={addToCart} />}
         />
+        <Route path="/product/:productId" element={<ProductDetailPage products={products} onAdd={addToCart} />} />
+        <Route path="/account" element={account ? <AccountPage userName={account.name} /> : <Navigate to="/" replace />} />
+        <Route path="/admin" element={account?.isAdmin ? <AdminPage /> : <Navigate to="/" replace />} />
       </Routes>
+
+      {cartCount > 0 && (
+        <button className="mobile-cart-bar" onClick={() => setCartOpen(true)}>
+          Cart ({cartCount}) - ${cartTotal.toFixed(2)}
+        </button>
+      )}
 
       <footer className="kaged-footer">
         <section className="footer-benefits">
@@ -365,11 +486,9 @@ export default function App() {
         </div>
       </footer>
 
-      {selectedProduct && <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} onAdd={addToCart} />}
       {cartOpen && <CartDrawer items={cartItems} total={cartTotal} onClose={() => setCartOpen(false)} onStartCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} onUpdateQty={updateQuantity} onRemove={removeItem} />}
       {checkoutOpen && <CheckoutFlow items={cartItems} total={cartTotal} submitting={checkoutState === 'submitting'} onClose={() => setCheckoutOpen(false)} onPlaceOrder={handleCheckout} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onLogin={handleLogin} onRegister={handleRegister} />}
     </>
   );
 }
-

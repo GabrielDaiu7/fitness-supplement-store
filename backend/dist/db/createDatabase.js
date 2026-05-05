@@ -33,6 +33,12 @@ async function createDatabaseIfMissing() {
     }
 }
 createDatabaseIfMissing().catch((error) => {
+    const pgError = error;
+    if (pgError.code === '28P01') {
+        console.error('Failed to create database: PostgreSQL rejected the username/password in DATABASE_URL. Update backend/.env with valid credentials and try again.');
+        process.exitCode = 1;
+        return;
+    }
     console.error('Failed to create database:', error);
     process.exitCode = 1;
 });

@@ -7,6 +7,7 @@ type HeaderProps = {
   onAccountClick: () => void;
   accountLabel: string;
   loggedIn: boolean;
+  isAdmin?: boolean;
   onLogout: () => void;
   accountMenuOpen: boolean;
 };
@@ -22,6 +23,7 @@ export function Header({
   onAccountClick,
   accountLabel,
   loggedIn,
+  isAdmin = false,
   onLogout,
   accountMenuOpen,
 }: HeaderProps) {
@@ -58,6 +60,14 @@ export function Header({
               </button>
               {loggedIn && accountMenuOpen && (
                 <div className="account-menu">
+                  <NavLink className="account-menu-btn" to="/account">
+                    My Account
+                  </NavLink>
+                  {isAdmin && (
+                    <NavLink className="account-menu-btn" to="/admin">
+                      Admin
+                    </NavLink>
+                  )}
                   <button className="account-menu-btn" onClick={onLogout}>
                     Log Out
                   </button>

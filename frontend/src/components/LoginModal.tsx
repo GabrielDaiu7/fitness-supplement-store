@@ -2,8 +2,8 @@ import { FormEvent, useState } from 'react';
 
 type LoginModalProps = {
   onClose: () => void;
-  onLogin: (email: string, password: string) => string | null;
-  onRegister: (name: string, email: string, password: string) => string | null;
+  onLogin: (email: string, password: string) => Promise<string | null>;
+  onRegister: (name: string, email: string, password: string) => Promise<string | null>;
 };
 
 export function LoginModal({ onClose, onLogin, onRegister }: LoginModalProps) {
@@ -13,7 +13,7 @@ export function LoginModal({ onClose, onLogin, onRegister }: LoginModalProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!email.trim() || !email.includes('@')) {
@@ -30,13 +30,13 @@ export function LoginModal({ onClose, onLogin, onRegister }: LoginModalProps) {
     }
 
     if (mode === 'register') {
-      const result = onRegister(name.trim(), email.trim().toLowerCase(), password.trim());
+      const result = await onRegister(name.trim(), email.trim().toLowerCase(), password.trim());
       if (result) {
         setError(result);
       }
       return;
     }
-    const result = onLogin(email.trim().toLowerCase(), password.trim());
+    const result = await onLogin(email.trim().toLowerCase(), password.trim());
     if (result) {
       setError(result);
     }

@@ -6,13 +6,21 @@ type CheckoutFlowProps = {
   total: number;
   submitting: boolean;
   onClose: () => void;
-  onPlaceOrder: () => Promise<void>;
+  onPlaceOrder: (payload: {
+    shipping: { fullName: string; email: string; address: string; city: string; zip: string };
+    promoCode: string;
+    shippingMethod: 'standard' | 'express';
+    subscribeFrequency?: string;
+  }) => Promise<void>;
 };
 
 export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder }: CheckoutFlowProps) {
   const [step, setStep] = useState(1);
   const [shipping, setShipping] = useState({ fullName: '', email: '', address: '', city: '', zip: '' });
   const [payment, setPayment] = useState({ cardName: '', cardNumber: '', expiry: '', cvc: '' });
+  const [promoCode, setPromoCode] = useState('');
+  const [shippingMethod, setShippingMethod] = useState<'standard' | 'express'>('standard');
+  const [subscribeFrequency, setSubscribeFrequency] = useState('');
 
   const canContinueShipping = useMemo(
     () => Object.values(shipping).every((value) => value.trim().length > 0),
@@ -47,6 +55,19 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder }
               <input placeholder="City" value={shipping.city} onChange={(e) => setShipping({ ...shipping, city: e.target.value })} />
               <input placeholder="ZIP" value={shipping.zip} onChange={(e) => setShipping({ ...shipping, zip: e.target.value })} />
             </div>
+            <div className="inline-fields">
+              <input placeholder="Promo code (ex: FUSION10)" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} />
+              <select value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value as 'standard' | 'express')}>
+                <option value="standard">Standard Shipping</option>
+                <option value="express">Express Shipping</option>
+              </select>
+            </div>
+            <select value={subscribeFrequency} onChange={(e) => setSubscribeFrequency(e.target.value)}>
+              <option value="">One-time purchase</option>
+              <option value="2-weeks">Subscribe every 2 weeks</option>
+              <option value="4-weeks">Subscribe every 4 weeks</option>
+              <option value="8-weeks">Subscribe every 8 weeks</option>
+            </select>
             <button className="btn btn-solid" disabled={!canContinueShipping} onClick={() => setStep(2)}>Continue</button>
           </div>
         )}
@@ -76,7 +97,18 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder }
             <p className="review-total">Total: ${total.toFixed(2)}</p>
             <div className="checkout-actions">
               <button className="btn btn-outline" onClick={() => setStep(2)}>Back</button>
-              <button className="btn btn-solid" disabled={submitting} onClick={onPlaceOrder}>
+              <button
+                className="btn btn-solid"
+                disabled={submitting}
+                onClick={() =>
+                  onPlaceOrder({
+                    shipping,
+                    promoCode,
+                    shippingMethod,
+                    subscribeFrequency: subscribeFrequency || undefined,
+                  })
+                }
+              >
                 {submitting ? 'Placing Order...' : 'Place Order'}
               </button>
             </div>
