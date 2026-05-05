@@ -259,7 +259,7 @@ export default function App() {
                     <p>*****</p>
                     <h3>Science Driven. Athlete Trusted.</h3>
                     <span>
-                      FormForge creates elite formulas built on research and trusted by athletes who
+                      Fusion creates elite formulas built on research and trusted by athletes who
                       demand the best.
                     </span>
                     <button>Learn More</button>
@@ -323,7 +323,7 @@ export default function App() {
                 <section className="athlete-quote">
                   <h3>Trusted by Athletes Across Strength, Endurance, and Functional Fitness</h3>
                   <p>
-                    "FormForge gives me clean energy and consistent output. It feels like a complete
+                    "Fusion gives me clean energy and consistent output. It feels like a complete
                     performance system, not random supplements."
                   </p>
                   <span>- Jordan M., Competitive Hybrid Athlete</span>
@@ -354,12 +354,15 @@ export default function App() {
           <article><h4>Fast Shipping</h4><p>Orders ship within 1-2 days.</p></article>
         </section>
         <section className="footer-links shell">
-          <article className="newsletter"><p>Stay on track with your goals</p><h4>Receive tips, articles & offers from FormForge</h4><div><input placeholder="E-mail" /><button>Subscribe</button></div></article>
+          <article className="newsletter"><p>Stay on track with your goals</p><h4>Receive tips, articles & offers from Fusion</h4><div><input placeholder="E-mail" /><button>Subscribe</button></div></article>
           <article><h5>Company</h5><p>About</p><p>Science</p><p>Careers</p></article>
           <article><h5>Support</h5><p>Help Center</p><p>Shipping & Returns</p><p>Reviews</p></article>
           <article><h5>Account & Rewards</h5><p>Manage Subscriptions</p><p>Distributor Login</p><p>Military Discount</p></article>
         </section>
-        <p className="footer-wordmark">FORMFORGE</p>
+        <div className="footer-wordmark">
+          <span className="brand-mark" aria-hidden="true" />
+          <span>FUSION</span>
+        </div>
       </footer>
 
       {selectedProduct && <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} onAdd={addToCart} />}

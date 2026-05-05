@@ -44,7 +44,10 @@ export function Header({
             <li><NavLink to={`/category/${toCategorySlug(stackTarget)}`}>Stack</NavLink></li>
           </ul>
 
-          <NavLink className="brand" to="/">FORMFORGE</NavLink>
+          <NavLink className="brand" to="/">
+            <span className="brand-mark" aria-hidden="true" />
+            <span className="brand-text">FUSION</span>
+          </NavLink>
 
           <div className="nav-utils">
             <span>USD $</span>
