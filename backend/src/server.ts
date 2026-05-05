@@ -402,6 +402,85 @@ app.get('/api/admin/products', authGuard, adminGuard, async (_req, res) => {
   res.json({ ok: true, products: result.rows });
 });
 
+app.get('/api/admin/overview', authGuard, adminGuard, async (_req, res) => {
+  try {
+    const [salesResult, ordersResult, usersResult, productsResult, lowStockResult, subscriptionsResult] =
+      await Promise.all([
+        pool.query(`SELECT COALESCE(SUM(total), 0) AS sales FROM orders`),
+        pool.query(`SELECT COUNT(*)::int AS count FROM orders`),
+        pool.query(`SELECT COUNT(*)::int AS count FROM users`),
+        pool.query(`SELECT COUNT(*)::int AS count FROM products WHERE in_stock = true`),
+        pool.query(`SELECT COUNT(*)::int AS count FROM products WHERE in_stock = false`),
+        pool.query(`SELECT COUNT(*)::int AS count FROM orders WHERE subscription_frequency IS NOT NULL`),
+      ]);
+
+    res.json({
+      ok: true,
+      metrics: {
+        totalSales: Number(salesResult.rows[0].sales),
+        totalOrders: Number(ordersResult.rows[0].count),
+        totalUsers: Number(usersResult.rows[0].count),
+        activeProducts: Number(productsResult.rows[0].count),
+        outOfStockProducts: Number(lowStockResult.rows[0].count),
+        activeSubscriptions: Number(subscriptionsResult.rows[0].count),
+      },
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to load admin overview' });
+  }
+});
+
+app.get('/api/admin/orders', authGuard, adminGuard, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT o.id, o.order_code AS "orderCode", o.total, o.status, o.created_at AS "createdAt",
+              o.subscription_frequency AS "subscriptionFrequency", u.name AS "customerName", u.email AS "customerEmail"
+       FROM orders o
+       JOIN users u ON u.id = o.user_id
+       ORDER BY o.created_at DESC
+       LIMIT 100`
+    );
+    res.json({ ok: true, orders: result.rows });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to load admin orders' });
+  }
+});
+
+app.patch('/api/admin/orders/:id/status', authGuard, adminGuard, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const status = String(req.body?.status ?? '').trim().toLowerCase();
+    if (!['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(status)) {
+      res.status(400).json({ ok: false, message: 'Invalid order status' });
+      return;
+    }
+    const result = await pool.query(
+      `UPDATE orders
+       SET status = $2
+       WHERE id = $1
+       RETURNING id, order_code AS "orderCode", status`,
+      [id, status]
+    );
+    res.json({ ok: true, order: result.rows[0] });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to update order status' });
+  }
+});
+
+app.get('/api/admin/users', authGuard, adminGuard, async (_req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, email, is_admin AS "isAdmin", created_at AS "createdAt"
+       FROM users
+       ORDER BY created_at DESC
+       LIMIT 100`
+    );
+    res.json({ ok: true, users: result.rows });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to load admin users' });
+  }
+});
+
 app.patch('/api/admin/products/:id', authGuard, adminGuard, async (req, res) => {
   const id = Number(req.params.id);
   const price = Number(req.body?.price);

@@ -183,3 +183,75 @@ export async function updateAdminProduct(
   });
   if (!response.ok) throw new Error('Failed to update product');
 }
+
+export async function fetchAdminOverview(): Promise<{
+  totalSales: number;
+  totalOrders: number;
+  totalUsers: number;
+  activeProducts: number;
+  outOfStockProducts: number;
+  activeSubscriptions: number;
+}> {
+  const response = await fetch(`${API}/admin/overview`, { headers: { ...authHeaders() } });
+  if (!response.ok) throw new Error('Failed to load admin overview');
+  const data = (await response.json()) as {
+    metrics: {
+      totalSales: number;
+      totalOrders: number;
+      totalUsers: number;
+      activeProducts: number;
+      outOfStockProducts: number;
+      activeSubscriptions: number;
+    };
+  };
+  return data.metrics;
+}
+
+export async function fetchAdminOrders(): Promise<
+  Array<{
+    id: number;
+    orderCode: string;
+    total: number;
+    status: string;
+    createdAt: string;
+    subscriptionFrequency?: string;
+    customerName: string;
+    customerEmail: string;
+  }>
+> {
+  const response = await fetch(`${API}/admin/orders`, { headers: { ...authHeaders() } });
+  if (!response.ok) throw new Error('Failed to load admin orders');
+  const data = (await response.json()) as {
+    orders: Array<{
+      id: number;
+      orderCode: string;
+      total: number;
+      status: string;
+      createdAt: string;
+      subscriptionFrequency?: string;
+      customerName: string;
+      customerEmail: string;
+    }>;
+  };
+  return data.orders.map((order) => ({ ...order, total: Number(order.total) }));
+}
+
+export async function updateAdminOrderStatus(orderId: number, status: string): Promise<void> {
+  const response = await fetch(`${API}/admin/orders/${orderId}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ status }),
+  });
+  if (!response.ok) throw new Error('Failed to update order status');
+}
+
+export async function fetchAdminUsers(): Promise<
+  Array<{ id: number; name: string; email: string; isAdmin: boolean; createdAt: string }>
+> {
+  const response = await fetch(`${API}/admin/users`, { headers: { ...authHeaders() } });
+  if (!response.ok) throw new Error('Failed to load admin users');
+  const data = (await response.json()) as {
+    users: Array<{ id: number; name: string; email: string; isAdmin: boolean; createdAt: string }>;
+  };
+  return data.users;
+}

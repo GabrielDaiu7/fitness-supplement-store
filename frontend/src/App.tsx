@@ -7,6 +7,7 @@ import { CheckoutFlow } from './components/CheckoutFlow';
 import { Header } from './components/Header';
 import { LoginModal } from './components/LoginModal';
 import { ProductSection } from './components/ProductSection';
+import { SearchDrawer } from './components/SearchDrawer';
 import { fallbackProducts } from './data/storefront';
 import { fetchCategories, fetchProducts, getMe, login, logout, register, submitAdvancedCheckout } from './lib/api';
 import type { CartItem, Product, User } from './types';
@@ -182,6 +183,7 @@ export default function App() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [checkoutState, setCheckoutState] = useState<'idle' | 'submitting'>('idle');
   const [loginOpen, setLoginOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [account, setAccount] = useState<User | null>(null);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
@@ -313,6 +315,7 @@ export default function App() {
         cartCount={cartCount}
         categories={categories}
         onOpenCart={() => setCartOpen(true)}
+        onOpenSearch={() => setSearchOpen(true)}
         onAccountClick={handleAccountClick}
         accountLabel={account ? `HI ${account.name.split(' ')[0].toUpperCase()}` : 'ACCT'}
         loggedIn={Boolean(account)}
@@ -487,6 +490,7 @@ export default function App() {
       </footer>
 
       {cartOpen && <CartDrawer items={cartItems} total={cartTotal} onClose={() => setCartOpen(false)} onStartCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} onUpdateQty={updateQuantity} onRemove={removeItem} />}
+      {searchOpen && <SearchDrawer products={products} onClose={() => setSearchOpen(false)} />}
       {checkoutOpen && <CheckoutFlow items={cartItems} total={cartTotal} submitting={checkoutState === 'submitting'} onClose={() => setCheckoutOpen(false)} onPlaceOrder={handleCheckout} />}
       {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} onLogin={handleLogin} onRegister={handleRegister} />}
     </>
