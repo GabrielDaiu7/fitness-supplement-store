@@ -5,9 +5,10 @@ import type { Product } from '../types';
 type SearchDrawerProps = {
   products: Product[];
   onClose: () => void;
+  formatPrice: (usdAmount: number) => string;
 };
 
-export function SearchDrawer({ products, onClose }: SearchDrawerProps) {
+export function SearchDrawer({ products, onClose, formatPrice }: SearchDrawerProps) {
   const [query, setQuery] = useState('');
   const featured = useMemo(() => products.slice(0, 4), [products]);
   const filtered = useMemo(() => {
@@ -41,7 +42,7 @@ export function SearchDrawer({ products, onClose }: SearchDrawerProps) {
             <Link to={`/product/${product.id}`} key={product.id} className="drawer-product" onClick={onClose}>
               <img src={product.image} alt={product.name} loading="lazy" />
               <h6>{product.name}</h6>
-              <span>${product.price.toFixed(2)}</span>
+              <span>{formatPrice(product.price)}</span>
             </Link>
           ))}
         </div>

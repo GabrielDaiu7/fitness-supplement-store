@@ -5,6 +5,7 @@ type CheckoutFlowProps = {
   items: CartItem[];
   total: number;
   submitting: boolean;
+  formatPrice: (usdAmount: number) => string;
   onClose: () => void;
   onPlaceOrder: (payload: {
     shipping: { fullName: string; email: string; address: string; city: string; zip: string };
@@ -14,7 +15,7 @@ type CheckoutFlowProps = {
   }) => Promise<void>;
 };
 
-export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder }: CheckoutFlowProps) {
+export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder, formatPrice }: CheckoutFlowProps) {
   const [step, setStep] = useState(1);
   const [shipping, setShipping] = useState({ fullName: '', email: '', address: '', city: '', zip: '' });
   const [payment, setPayment] = useState({ cardName: '', cardNumber: '', expiry: '', cvc: '' });
@@ -41,79 +42,126 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder }
         </div>
 
         <div className="checkout-steps">
-          <span className={step >= 1 ? 'on' : ''}>1. Shipping</span>
-          <span className={step >= 2 ? 'on' : ''}>2. Payment</span>
-          <span className={step >= 3 ? 'on' : ''}>3. Review</span>
+          <span className={step >= 1 ? 'on' : ''}>1 Shipping</span>
+          <span className={step >= 2 ? 'on' : ''}>2 Payment</span>
+          <span className={step >= 3 ? 'on' : ''}>3 Review</span>
         </div>
 
-        {step === 1 && (
+        <div className="checkout-layout">
           <div className="checkout-body">
-            <input placeholder="Full name" value={shipping.fullName} onChange={(e) => setShipping({ ...shipping, fullName: e.target.value })} />
-            <input placeholder="Email" value={shipping.email} onChange={(e) => setShipping({ ...shipping, email: e.target.value })} />
-            <input placeholder="Address" value={shipping.address} onChange={(e) => setShipping({ ...shipping, address: e.target.value })} />
-            <div className="inline-fields">
-              <input placeholder="City" value={shipping.city} onChange={(e) => setShipping({ ...shipping, city: e.target.value })} />
-              <input placeholder="ZIP" value={shipping.zip} onChange={(e) => setShipping({ ...shipping, zip: e.target.value })} />
-            </div>
-            <div className="inline-fields">
-              <input placeholder="Promo code (ex: FUSION10)" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} />
-              <select value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value as 'standard' | 'express')}>
-                <option value="standard">Standard Shipping</option>
-                <option value="express">Express Shipping</option>
-              </select>
-            </div>
-            <select value={subscribeFrequency} onChange={(e) => setSubscribeFrequency(e.target.value)}>
-              <option value="">One-time purchase</option>
-              <option value="2-weeks">Subscribe every 2 weeks</option>
-              <option value="4-weeks">Subscribe every 4 weeks</option>
-              <option value="8-weeks">Subscribe every 8 weeks</option>
-            </select>
-            <button className="btn btn-solid" disabled={!canContinueShipping} onClick={() => setStep(2)}>Continue</button>
-          </div>
-        )}
+            {step === 1 && (
+              <>
+                <h4 className="checkout-title">Shipping Details</h4>
+                <label className="checkout-label">Full name</label>
+                <input className="checkout-input" placeholder="Jane Doe" value={shipping.fullName} onChange={(e) => setShipping({ ...shipping, fullName: e.target.value })} />
+                <label className="checkout-label">Email</label>
+                <input className="checkout-input" placeholder="jane@email.com" value={shipping.email} onChange={(e) => setShipping({ ...shipping, email: e.target.value })} />
+                <label className="checkout-label">Address</label>
+                <input className="checkout-input" placeholder="123 Main Street" value={shipping.address} onChange={(e) => setShipping({ ...shipping, address: e.target.value })} />
+                <div className="inline-fields">
+                  <div>
+                    <label className="checkout-label">City</label>
+                    <input className="checkout-input" placeholder="Los Angeles" value={shipping.city} onChange={(e) => setShipping({ ...shipping, city: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="checkout-label">ZIP</label>
+                    <input className="checkout-input" placeholder="90001" value={shipping.zip} onChange={(e) => setShipping({ ...shipping, zip: e.target.value })} />
+                  </div>
+                </div>
+                <div className="inline-fields">
+                  <div>
+                    <label className="checkout-label">Promo code</label>
+                    <input className="checkout-input" placeholder="FUSION10" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="checkout-label">Shipping method</label>
+                    <select className="checkout-input" value={shippingMethod} onChange={(e) => setShippingMethod(e.target.value as 'standard' | 'express')}>
+                      <option value="standard">Standard Shipping</option>
+                      <option value="express">Express Shipping</option>
+                    </select>
+                  </div>
+                </div>
+                <label className="checkout-label">Delivery plan</label>
+                <select className="checkout-input" value={subscribeFrequency} onChange={(e) => setSubscribeFrequency(e.target.value)}>
+                  <option value="">One-time purchase</option>
+                  <option value="2-weeks">Subscribe every 2 weeks</option>
+                  <option value="4-weeks">Subscribe every 4 weeks</option>
+                  <option value="8-weeks">Subscribe every 8 weeks</option>
+                </select>
+                <button className="btn btn-solid checkout-primary" disabled={!canContinueShipping} onClick={() => setStep(2)}>Continue to Payment</button>
+              </>
+            )}
 
-        {step === 2 && (
-          <div className="checkout-body">
-            <input placeholder="Name on card" value={payment.cardName} onChange={(e) => setPayment({ ...payment, cardName: e.target.value })} />
-            <input placeholder="Card number" value={payment.cardNumber} onChange={(e) => setPayment({ ...payment, cardNumber: e.target.value })} />
-            <div className="inline-fields">
-              <input placeholder="MM/YY" value={payment.expiry} onChange={(e) => setPayment({ ...payment, expiry: e.target.value })} />
-              <input placeholder="CVC" value={payment.cvc} onChange={(e) => setPayment({ ...payment, cvc: e.target.value })} />
-            </div>
-            <div className="checkout-actions">
-              <button className="btn btn-outline" onClick={() => setStep(1)}>Back</button>
-              <button className="btn btn-solid" disabled={!canContinuePayment} onClick={() => setStep(3)}>Review</button>
-            </div>
-          </div>
-        )}
+            {step === 2 && (
+              <>
+                <h4 className="checkout-title">Payment Details</h4>
+                <label className="checkout-label">Name on card</label>
+                <input className="checkout-input" placeholder="Jane Doe" value={payment.cardName} onChange={(e) => setPayment({ ...payment, cardName: e.target.value })} />
+                <label className="checkout-label">Card number</label>
+                <input className="checkout-input" placeholder="4242 4242 4242 4242" value={payment.cardNumber} onChange={(e) => setPayment({ ...payment, cardNumber: e.target.value })} />
+                <div className="inline-fields">
+                  <div>
+                    <label className="checkout-label">Expiry</label>
+                    <input className="checkout-input" placeholder="MM/YY" value={payment.expiry} onChange={(e) => setPayment({ ...payment, expiry: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="checkout-label">CVC</label>
+                    <input className="checkout-input" placeholder="123" value={payment.cvc} onChange={(e) => setPayment({ ...payment, cvc: e.target.value })} />
+                  </div>
+                </div>
+                <div className="checkout-actions">
+                  <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
+                  <button className="btn btn-solid" disabled={!canContinuePayment} onClick={() => setStep(3)}>Review Order</button>
+                </div>
+              </>
+            )}
 
-        {step === 3 && (
-          <div className="checkout-body">
-            <div className="review-list">
+            {step === 3 && (
+              <>
+                <h4 className="checkout-title">Review & Place Order</h4>
+                <div className="review-list">
+                  {items.map((item) => (
+                    <p key={item.id}>{item.name} x {item.quantity}</p>
+                  ))}
+                </div>
+                <p className="review-total">Total: {formatPrice(total)}</p>
+                <div className="checkout-actions">
+                  <button className="btn btn-ghost" onClick={() => setStep(2)}>Back</button>
+                  <button
+                    className="btn btn-solid"
+                    disabled={submitting}
+                    onClick={() =>
+                      onPlaceOrder({
+                        shipping,
+                        promoCode,
+                        shippingMethod,
+                        subscribeFrequency: subscribeFrequency || undefined,
+                      })
+                    }
+                  >
+                    {submitting ? 'Placing Order...' : 'Place Order'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          <aside className="checkout-summary">
+            <h4>Order Summary</h4>
+            <div className="checkout-summary-list">
               {items.map((item) => (
-                <p key={item.id}>{item.name} x {item.quantity}</p>
+                <div key={item.id} className="checkout-summary-row">
+                  <span>{item.name}</span>
+                  <span>x{item.quantity}</span>
+                </div>
               ))}
             </div>
-            <p className="review-total">Total: ${total.toFixed(2)}</p>
-            <div className="checkout-actions">
-              <button className="btn btn-outline" onClick={() => setStep(2)}>Back</button>
-              <button
-                className="btn btn-solid"
-                disabled={submitting}
-                onClick={() =>
-                  onPlaceOrder({
-                    shipping,
-                    promoCode,
-                    shippingMethod,
-                    subscribeFrequency: subscribeFrequency || undefined,
-                  })
-                }
-              >
-                {submitting ? 'Placing Order...' : 'Place Order'}
-              </button>
+            <div className="checkout-summary-total">
+              <span>Total</span>
+              <strong>{formatPrice(total)}</strong>
             </div>
-          </div>
-        )}
+          </aside>
+        </div>
       </section>
     </div>
   );

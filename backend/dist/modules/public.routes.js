@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const catalog_controller_1 = require("../controllers/catalog.controller");
+const checkout_controller_1 = require("../controllers/checkout.controller");
+const publicRouter = (0, express_1.Router)();
+publicRouter.get('/health', catalog_controller_1.healthController);
+publicRouter.get('/products', catalog_controller_1.listProductsController);
+publicRouter.get('/products/:id', catalog_controller_1.getProductController);
+publicRouter.get('/categories', catalog_controller_1.listCategoriesController);
+publicRouter.post('/checkout', checkout_controller_1.checkoutController);
+exports.default = publicRouter;

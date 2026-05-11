@@ -7,6 +7,7 @@ type CartDrawerProps = {
   onStartCheckout: () => void;
   onUpdateQty: (id: number, delta: number) => void;
   onRemove: (id: number) => void;
+  formatPrice: (usdAmount: number) => string;
 };
 
 export function CartDrawer({
@@ -16,6 +17,7 @@ export function CartDrawer({
   onStartCheckout,
   onUpdateQty,
   onRemove,
+  formatPrice,
 }: CartDrawerProps) {
   return (
     <div className="overlay" onClick={onClose}>
@@ -32,7 +34,7 @@ export function CartDrawer({
             <article key={item.id} className="cart-row">
               <div>
                 <strong>{item.name}</strong>
-                <p>${item.price.toFixed(2)} x {item.quantity}</p>
+                <p>{formatPrice(item.price)} x {item.quantity}</p>
               </div>
               <div className="qty">
                 <button className="btn btn-ghost" onClick={() => onUpdateQty(item.id, -1)}>-</button>
@@ -45,7 +47,7 @@ export function CartDrawer({
         </div>
 
         <div className="cart-foot">
-          <p>Total: ${total.toFixed(2)}</p>
+          <p>Total: {formatPrice(total)}</p>
           <button className="btn btn-solid" disabled={!items.length} onClick={onStartCheckout}>
             Continue to Checkout
           </button>

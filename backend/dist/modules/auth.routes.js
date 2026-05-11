@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_controller_1 = require("../controllers/auth.controller");
+const auth_1 = require("../middleware/auth");
+const authRouter = (0, express_1.Router)();
+authRouter.post('/register', auth_controller_1.registerController);
+authRouter.post('/login', auth_controller_1.loginController);
+authRouter.post('/refresh', auth_controller_1.refreshController);
+authRouter.post('/logout', auth_controller_1.logoutController);
+authRouter.post('/verify-email', auth_controller_1.verifyEmailController);
+authRouter.post('/resend-verification', auth_controller_1.resendVerificationController);
+authRouter.post('/track', auth_controller_1.trackAuthEventController);
+authRouter.post('/data-request', auth_1.authGuard, auth_controller_1.dataRequestController);
+authRouter.post('/welcome-perk', auth_1.authGuard, auth_controller_1.sendWelcomePerkController);
+authRouter.get('/me', auth_1.authGuard, auth_controller_1.meController);
+authRouter.patch('/onboarding', auth_1.authGuard, auth_controller_1.updateOnboardingController);
+exports.default = authRouter;

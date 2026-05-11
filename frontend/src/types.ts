@@ -1,10 +1,14 @@
 export type Product = {
   id: number;
   name: string;
+  brand?: string;
   category: string;
+  flavor?: string;
+  servings?: number;
   price: number;
   description: string;
   image: string;
+  images?: string[];
   ingredients?: string[];
   usage?: string;
   faqs?: Array<{ q: string; a: string }>;
@@ -51,4 +55,32 @@ export type User = {
   name: string;
   email: string;
   isAdmin: boolean;
+  emailVerified?: boolean;
+  welcomeCoupon?: string;
+  goal?: string;
+  dietType?: string;
+  trainingFrequency?: string;
+  preferredShippingAddress?: string;
+  preferredCurrency?: string;
+  defaultShippingMethod?: string;
+  defaultSubscribeFrequency?: string;
+};
+
+export type Address = {
+  id: number;
+  fullName: string;
+  email: string;
+  address: string;
+  city: string;
+  zip: string;
+  isDefault: boolean;
+};
+
+export type PaymentMethod = {
+  id: number;
+  cardBrand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+  isDefault: boolean;
 };

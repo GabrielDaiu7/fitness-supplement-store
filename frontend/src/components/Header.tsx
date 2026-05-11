@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 
 type HeaderProps = {
@@ -6,11 +7,14 @@ type HeaderProps = {
   onOpenCart: () => void;
   onOpenSearch: () => void;
   onAccountClick: () => void;
-  accountLabel: string;
   loggedIn: boolean;
   isAdmin?: boolean;
   onLogout: () => void;
   accountMenuOpen: boolean;
+  selectedCountry: string;
+  selectedCurrency: string;
+  onCurrencyChange: (currencyCode: string, countryLabel: string) => void;
+  currencyOptions: Array<{ country: string; flag: string; currency: string; symbol: string }>;
 };
 
 function toCategorySlug(category: string): string {
@@ -23,16 +27,22 @@ export function Header({
   onOpenCart,
   onOpenSearch,
   onAccountClick,
-  accountLabel,
   loggedIn,
   isAdmin = false,
   onLogout,
   accountMenuOpen,
+  selectedCountry,
+  selectedCurrency,
+  onCurrencyChange,
+  currencyOptions,
 }: HeaderProps) {
   const navCategories = categories.filter((category) => category !== 'All');
   const shopTarget = navCategories[0] ?? 'Protein';
   const scienceTarget = navCategories[1] ?? shopTarget;
   const stackTarget = navCategories[2] ?? shopTarget;
+  const [currencyOpen, setCurrencyOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const selected = currencyOptions.find((entry) => entry.currency === selectedCurrency) ?? currencyOptions[0];
 
   return (
     <>
@@ -43,27 +53,31 @@ export function Header({
       <nav className="main-nav">
         <div className="shell nav-inner">
           <ul className="nav-links">
-            <li className="nav-shop">
-              <NavLink to={`/category/${toCategorySlug(shopTarget)}`}>Shop</NavLink>
+            <li
+              className={`nav-shop${shopOpen ? ' open' : ''}`}
+              onMouseEnter={() => setShopOpen(true)}
+              onMouseLeave={() => setShopOpen(false)}
+            >
+              <NavLink to={`/category/${toCategorySlug(shopTarget)}`} onClick={() => setShopOpen(false)}>Shop</NavLink>
               <div className="mega-menu">
                 <article>
                   <h6>Category</h6>
                   {navCategories.slice(0, 8).map((category) => (
-                    <NavLink key={category} to={`/category/${toCategorySlug(category)}`}>{category}</NavLink>
+                    <NavLink key={category} to={`/category/${toCategorySlug(category)}`} onClick={() => setShopOpen(false)}>{category}</NavLink>
                   ))}
                 </article>
                 <article>
                   <h6>Goal</h6>
-                  <NavLink to={`/category/${toCategorySlug(shopTarget)}`}>Build Muscle</NavLink>
-                  <NavLink to={`/category/${toCategorySlug(scienceTarget)}`}>Athletic Performance</NavLink>
-                  <NavLink to={`/category/${toCategorySlug(stackTarget)}`}>Weight Management</NavLink>
-                  <NavLink to={`/category/${toCategorySlug(shopTarget)}`}>Health & Wellness</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(shopTarget)}`} onClick={() => setShopOpen(false)}>Build Muscle</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(scienceTarget)}`} onClick={() => setShopOpen(false)}>Athletic Performance</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(stackTarget)}`} onClick={() => setShopOpen(false)}>Weight Management</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(shopTarget)}`} onClick={() => setShopOpen(false)}>Health & Wellness</NavLink>
                 </article>
                 <article>
                   <h6>Best Sellers</h6>
-                  <NavLink to={`/category/${toCategorySlug(shopTarget)}`}>Hydra Surge</NavLink>
-                  <NavLink to={`/category/${toCategorySlug(scienceTarget)}`}>Pure Isolate</NavLink>
-                  <NavLink to={`/category/${toCategorySlug(stackTarget)}`}>Ignite Pre</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(shopTarget)}`} onClick={() => setShopOpen(false)}>Hydra Surge</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(scienceTarget)}`} onClick={() => setShopOpen(false)}>Pure Isolate</NavLink>
+                  <NavLink to={`/category/${toCategorySlug(stackTarget)}`} onClick={() => setShopOpen(false)}>Ignite Pre</NavLink>
                 </article>
                 <article className="mega-highlight">
                   <img src="https://images.unsplash.com/photo-1517964603305-11c0f6f66012?auto=format&fit=crop&w=700&q=80" alt="Just launched products" />
@@ -87,11 +101,51 @@ export function Header({
           </NavLink>
 
           <div className="nav-utils">
-            <button className="icon-btn" aria-label="Currency">USD $</button>
-            <button className="icon-btn" aria-label="Search" onClick={onOpenSearch}>SRCH</button>
             <div className="account-wrap">
-              <button className="icon-btn" aria-label="Account" onClick={onAccountClick}>
-                {accountLabel}
+              <button className="icon-btn currency-btn" aria-label="Currency" title={selectedCountry} onClick={() => setCurrencyOpen((prev) => !prev)}>
+                <span>{selected.flag}</span>
+                <span>{selected.currency}</span>
+                <span className="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </span>
+              </button>
+              {currencyOpen && (
+                <div className="account-menu currency-menu">
+                  {currencyOptions.map((entry) => (
+                    <button
+                      key={`${entry.country}-${entry.currency}`}
+                      className="account-menu-btn currency-row"
+                      onClick={() => {
+                        onCurrencyChange(entry.currency, entry.country);
+                        setCurrencyOpen(false);
+                      }}
+                    >
+                      <span>{entry.flag}</span>
+                      <span>{entry.country}</span>
+                      <span>{entry.currency} {entry.symbol}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="icon-btn icon-only" aria-label="Search" onClick={onOpenSearch}>
+              <span className="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M16 16l4.2 4.2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </span>
+            </button>
+            <div className="account-wrap">
+              <button className="icon-btn icon-only" aria-label="Account" onClick={onAccountClick}>
+                <span className="nav-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="8.3" r="3.4" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="M5 19c1.2-3.2 4-4.8 7-4.8s5.8 1.6 7 4.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </span>
               </button>
               {loggedIn && accountMenuOpen && (
                 <div className="account-menu">
@@ -109,7 +163,16 @@ export function Header({
                 </div>
               )}
             </div>
-            <button className="icon-btn" aria-label="Cart" onClick={onOpenCart}>CART {cartCount}</button>
+            <button className="icon-btn icon-only cart-btn" aria-label="Cart" onClick={onOpenCart}>
+              <span className="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                  <path d="M3.5 5.5h2.3l1.7 9.2h9.2l2-6.8H7.1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="10" cy="19" r="1.2" fill="currentColor" />
+                  <circle cx="17" cy="19" r="1.2" fill="currentColor" />
+                </svg>
+              </span>
+              {cartCount > 0 && <b className="cart-count">{cartCount}</b>}
+            </button>
           </div>
         </div>
       </nav>

@@ -1,4 +1,5 @@
 import type { Product } from '../types';
+import { getProductTypeLabel } from '../lib/productLabels';
 
 type ProductModalProps = {
   product: Product;
@@ -12,7 +13,7 @@ export function ProductModal({ product, onClose, onAdd }: ProductModalProps) {
       <section className="modal" onClick={(e) => e.stopPropagation()}>
         <img className="modal-image" src={product.image} alt={product.name} loading="lazy" />
         <h3>{product.name}</h3>
-        <p className="label">{product.category}</p>
+        <p className="label">{getProductTypeLabel(product)}</p>
         <p>{product.description}</p>
         <span className="price">${product.price.toFixed(2)}</span>
         <div className="modal-actions">

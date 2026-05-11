@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Product } from '../types';
+import { getProductTypeLabel } from '../lib/productLabels';
 
 type ProductSectionProps = {
   categories: string[];
@@ -10,6 +11,7 @@ type ProductSectionProps = {
   onCategoryChange: (category: string) => void;
   onDetails: (product: Product) => void;
   onAdd: (product: Product) => void;
+  formatPrice: (usdAmount: number) => string;
 };
 
 export function ProductSection({
@@ -21,6 +23,7 @@ export function ProductSection({
   onCategoryChange,
   onDetails,
   onAdd,
+  formatPrice,
 }: ProductSectionProps) {
   const [query, setQuery] = useState('');
   const [goal, setGoal] = useState('All');
@@ -132,12 +135,12 @@ export function ProductSection({
         {filteredProducts.map((product) => (
           <article key={product.id} className="product-card">
             <img className="product-image" src={product.image} alt={product.name} loading="lazy" />
-            <p className="label">{product.category}</p>
+            <p className="label">{getProductTypeLabel(product)}</p>
             {product.inStock === false && <p className="stock-badge">Out of stock</p>}
             <h3>{product.name}</h3>
             <p>{product.description}</p>
             <div className="product-foot">
-              <span>${product.price.toFixed(2)}</span>
+              <span>{formatPrice(product.price)}</span>
               <div className="actions">
                 <button className="btn btn-ghost" onClick={() => onDetails(product)}>
                   Details
