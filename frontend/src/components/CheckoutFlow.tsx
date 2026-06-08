@@ -18,7 +18,6 @@ type CheckoutFlowProps = {
 export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder, formatPrice }: CheckoutFlowProps) {
   const [step, setStep] = useState(1);
   const [shipping, setShipping] = useState({ fullName: '', email: '', address: '', city: '', zip: '' });
-  const [payment, setPayment] = useState({ cardName: '', cardNumber: '', expiry: '', cvc: '' });
   const [promoCode, setPromoCode] = useState('');
   const [shippingMethod, setShippingMethod] = useState<'standard' | 'express'>('standard');
   const [subscribeFrequency, setSubscribeFrequency] = useState('');
@@ -26,11 +25,6 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder, 
   const canContinueShipping = useMemo(
     () => Object.values(shipping).every((value) => value.trim().length > 0),
     [shipping]
-  );
-
-  const canContinuePayment = useMemo(
-    () => Object.values(payment).every((value) => value.trim().length > 0),
-    [payment]
   );
 
   return (
@@ -43,8 +37,7 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder, 
 
         <div className="checkout-steps">
           <span className={step >= 1 ? 'on' : ''}>1 Shipping</span>
-          <span className={step >= 2 ? 'on' : ''}>2 Payment</span>
-          <span className={step >= 3 ? 'on' : ''}>3 Review</span>
+          <span className={step >= 2 ? 'on' : ''}>2 Review</span>
         </div>
 
         <div className="checkout-layout">
@@ -88,37 +81,14 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder, 
                   <option value="4-weeks">Subscribe every 4 weeks</option>
                   <option value="8-weeks">Subscribe every 8 weeks</option>
                 </select>
-                <button className="btn btn-solid checkout-primary" disabled={!canContinueShipping} onClick={() => setStep(2)}>Continue to Payment</button>
+                <button className="btn btn-solid checkout-primary" disabled={!canContinueShipping} onClick={() => setStep(2)}>Review Order</button>
               </>
             )}
 
             {step === 2 && (
               <>
-                <h4 className="checkout-title">Payment Details</h4>
-                <label className="checkout-label">Name on card</label>
-                <input className="checkout-input" placeholder="Jane Doe" value={payment.cardName} onChange={(e) => setPayment({ ...payment, cardName: e.target.value })} />
-                <label className="checkout-label">Card number</label>
-                <input className="checkout-input" placeholder="4242 4242 4242 4242" value={payment.cardNumber} onChange={(e) => setPayment({ ...payment, cardNumber: e.target.value })} />
-                <div className="inline-fields">
-                  <div>
-                    <label className="checkout-label">Expiry</label>
-                    <input className="checkout-input" placeholder="MM/YY" value={payment.expiry} onChange={(e) => setPayment({ ...payment, expiry: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="checkout-label">CVC</label>
-                    <input className="checkout-input" placeholder="123" value={payment.cvc} onChange={(e) => setPayment({ ...payment, cvc: e.target.value })} />
-                  </div>
-                </div>
-                <div className="checkout-actions">
-                  <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
-                  <button className="btn btn-solid" disabled={!canContinuePayment} onClick={() => setStep(3)}>Review Order</button>
-                </div>
-              </>
-            )}
-
-            {step === 3 && (
-              <>
                 <h4 className="checkout-title">Review & Place Order</h4>
+                <p className="state">Payment collection is not connected yet. This order will be recorded for follow-up fulfillment.</p>
                 <div className="review-list">
                   {items.map((item) => (
                     <p key={item.id}>{item.name} x {item.quantity}</p>
@@ -126,7 +96,7 @@ export function CheckoutFlow({ items, total, submitting, onClose, onPlaceOrder, 
                 </div>
                 <p className="review-total">Total: {formatPrice(total)}</p>
                 <div className="checkout-actions">
-                  <button className="btn btn-ghost" onClick={() => setStep(2)}>Back</button>
+                  <button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button>
                   <button
                     className="btn btn-solid"
                     disabled={submitting}

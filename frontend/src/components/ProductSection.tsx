@@ -11,6 +11,8 @@ type ProductSectionProps = {
   onCategoryChange: (category: string) => void;
   onDetails: (product: Product) => void;
   onAdd: (product: Product) => void;
+  wishlistProductIds: number[];
+  onToggleWishlist: (product: Product) => void;
   formatPrice: (usdAmount: number) => string;
 };
 
@@ -23,6 +25,8 @@ export function ProductSection({
   onCategoryChange,
   onDetails,
   onAdd,
+  wishlistProductIds,
+  onToggleWishlist,
   formatPrice,
 }: ProductSectionProps) {
   const [query, setQuery] = useState('');
@@ -32,16 +36,19 @@ export function ProductSection({
   const [inStockOnly, setInStockOnly] = useState(false);
 
   const availableGoals = useMemo(
-    () => ['All', 'muscle', 'fat-loss', 'recovery'],
+    () => ['All', ...Array.from(new Set(products.flatMap((product) => product.goals ?? [])))],
     [products]
   );
 
   const filteredProducts = useMemo(() => {
     return products.filter((product) => {
+      const normalizedQuery = query.trim().toLowerCase();
       const matchesQuery =
-        query.trim().length === 0 ||
-        product.name.toLowerCase().includes(query.toLowerCase()) ||
-        product.description.toLowerCase().includes(query.toLowerCase());
+        normalizedQuery.length === 0 ||
+        product.name.toLowerCase().includes(normalizedQuery) ||
+        product.description.toLowerCase().includes(normalizedQuery) ||
+        product.category.toLowerCase().includes(normalizedQuery) ||
+        (product.goals ?? []).some((productGoal) => productGoal.toLowerCase().includes(normalizedQuery));
 
       const matchesGoal = goal === 'All' || Boolean(product.goals?.includes(goal));
       const matchesMin = minPrice.trim().length === 0 || product.price >= Number(minPrice);
@@ -132,26 +139,52 @@ export function ProductSection({
       )}
 
       <div className="product-grid">
-        {filteredProducts.map((product) => (
-          <article key={product.id} className="product-card">
-            <img className="product-image" src={product.image} alt={product.name} loading="lazy" />
-            <p className="label">{getProductTypeLabel(product)}</p>
-            {product.inStock === false && <p className="stock-badge">Out of stock</p>}
-            <h3>{product.name}</h3>
-            <p>{product.description}</p>
-            <div className="product-foot">
-              <span>{formatPrice(product.price)}</span>
-              <div className="actions">
-                <button className="btn btn-ghost" onClick={() => onDetails(product)}>
-                  Details
-                </button>
-                <button className="btn btn-solid mini" onClick={() => onAdd(product)}>
-                  Add
-                </button>
+        {filteredProducts.map((product) => {
+          const reviews = product.reviews ?? [];
+          const averageRating = reviews.length
+            ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+            : 0;
+          const productMeta = [product.brand, product.flavor, product.servings ? `${product.servings} servings` : null].filter(Boolean);
+          const isLowStock =
+            product.inStock !== false &&
+            typeof product.stockQuantity === 'number' &&
+            typeof product.lowStockThreshold === 'number' &&
+            product.stockQuantity <= product.lowStockThreshold;
+
+          return (
+            <article key={product.id} className="product-card">
+              <div className="product-image-wrap">
+                <img className="product-image" src={product.image} alt={product.name} loading="lazy" />
+                <span className={product.inStock === false ? 'stock-badge out' : 'stock-badge'}>
+                  {product.inStock === false ? 'Out of stock' : isLowStock ? `Only ${product.stockQuantity} left` : 'In stock'}
+                </span>
               </div>
-            </div>
-          </article>
-        ))}
+              <div className="product-card-body">
+                <div className="product-card-topline">
+                  <p className="label">{getProductTypeLabel(product)}</p>
+                  {reviews.length > 0 && <span className="product-rating">{averageRating.toFixed(1)} / 5 ({reviews.length})</span>}
+                </div>
+                <h3>{product.name}</h3>
+                {productMeta.length > 0 && <p className="product-meta">{productMeta.join(' | ')}</p>}
+                <p className="product-description">{product.description}</p>
+              </div>
+              <div className="product-foot">
+                <span>{formatPrice(product.price)}</span>
+                <div className="actions">
+                  <button className="btn btn-ghost" onClick={() => onDetails(product)}>
+                    Details
+                  </button>
+                  <button className="btn btn-ghost mini" onClick={() => onToggleWishlist(product)}>
+                    {wishlistProductIds.includes(product.id) ? 'Saved' : 'Save'}
+                  </button>
+                  <button className="btn btn-solid mini" disabled={product.inStock === false} onClick={() => onAdd(product)}>
+                    {product.inStock === false ? 'Out' : 'Add'}
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
       </div>
     </section>
   );

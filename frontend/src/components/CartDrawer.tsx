@@ -3,6 +3,7 @@ import type { CartItem } from '../types';
 type CartDrawerProps = {
   items: CartItem[];
   total: number;
+  bundleCode?: string;
   onClose: () => void;
   onStartCheckout: () => void;
   onUpdateQty: (id: number, delta: number) => void;
@@ -13,6 +14,7 @@ type CartDrawerProps = {
 export function CartDrawer({
   items,
   total,
+  bundleCode,
   onClose,
   onStartCheckout,
   onUpdateQty,
@@ -47,6 +49,7 @@ export function CartDrawer({
         </div>
 
         <div className="cart-foot">
+          {bundleCode && <p className="state">Stack discount attached: {bundleCode}. Final discount is applied at checkout.</p>}
           <p>Total: {formatPrice(total)}</p>
           <button className="btn btn-solid" disabled={!items.length} onClick={onStartCheckout}>
             Continue to Checkout

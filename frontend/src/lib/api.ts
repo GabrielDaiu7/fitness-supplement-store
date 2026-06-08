@@ -1,4 +1,4 @@
-import type { Address, CartItem, CheckoutPayload, CheckoutResponse, PaymentMethod, Product, User } from '../types';
+import type { Address, CartItem, CheckoutPayload, CheckoutResponse, Coupon, PaymentMethod, Product, User } from '../types';
 
 const API = import.meta.env.VITE_API_URL ?? '/api';
 let accessToken = '';
@@ -20,6 +20,8 @@ function normalizeProduct(product: Product): Product {
   return {
     ...product,
     price: Number(product.price),
+    stockQuantity: product.stockQuantity === undefined ? undefined : Number(product.stockQuantity),
+    lowStockThreshold: product.lowStockThreshold === undefined ? undefined : Number(product.lowStockThreshold),
     images: normalizedImages,
     image: normalizedImages[0],
   };
@@ -74,6 +76,70 @@ export async function fetchCategories(): Promise<string[]> {
   return data.categories;
 }
 
+export async function submitProductReview(
+  productId: number,
+  payload: { rating: number; text: string }
+): Promise<{ name: string; rating: number; text: string; verifiedPurchase: boolean; createdAt: string }> {
+  await ensureAuth();
+  const response = await fetch(`${API}/products/${productId}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(data.message || 'Failed to save review');
+  }
+  const data = (await response.json()) as {
+    review: { name: string; rating: number; text: string; verifiedPurchase: boolean; createdAt: string };
+  };
+  return data.review;
+}
+
+export async function fetchWishlist(): Promise<Product[]> {
+  await ensureAuth();
+  const response = await fetch(`${API}/account/wishlist`, { headers: { ...authHeaders() } });
+  if (!response.ok) throw new Error('Failed to load wishlist');
+  const data = (await response.json()) as { products: Product[] };
+  return data.products.map(normalizeProduct);
+}
+
+export async function addWishlistItem(productId: number): Promise<Product[]> {
+  await ensureAuth();
+  const response = await fetch(`${API}/account/wishlist/${productId}`, {
+    method: 'POST',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) throw new Error('Failed to save wishlist item');
+  const data = (await response.json()) as { products: Product[] };
+  return data.products.map(normalizeProduct);
+}
+
+export async function removeWishlistItem(productId: number): Promise<Product[]> {
+  await ensureAuth();
+  const response = await fetch(`${API}/account/wishlist/${productId}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  if (!response.ok) throw new Error('Failed to remove wishlist item');
+  const data = (await response.json()) as { products: Product[] };
+  return data.products.map(normalizeProduct);
+}
+
+export async function subscribeNewsletter(email: string, source = 'footer'): Promise<{ couponCode: string }> {
+  const response = await fetch(`${API}/newsletter`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, source }),
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(data.message || 'Newsletter signup failed');
+  }
+  const data = (await response.json()) as { subscription: { couponCode: string } };
+  return { couponCode: data.subscription.couponCode };
+}
+
 export async function submitCheckout(cartItems: CartItem[]): Promise<CheckoutResponse> {
   const payload: CheckoutPayload = {
     items: cartItems.map((item) => ({ id: item.id, quantity: item.quantity })),
@@ -100,7 +166,10 @@ export async function submitAdvancedCheckout(payload: CheckoutPayload): Promise<
     credentials: 'include',
     body: JSON.stringify(payload),
   });
-  if (!response.ok) throw new Error('Checkout failed');
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { message?: string };
+    throw new Error(data.message || 'Checkout failed');
+  }
   return (await response.json()) as CheckoutResponse;
 }
 
@@ -172,11 +241,11 @@ export async function getMe(): Promise<User | null> {
   return data.user;
 }
 
-export async function verifyEmail(token: string): Promise<boolean> {
+export async function verifyEmail(email: string, token: string): Promise<boolean> {
   const response = await fetch(`${API}/auth/verify-email`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ email, token }),
   });
   return response.ok;
 }
@@ -363,23 +432,25 @@ export async function fetchSupportTickets(): Promise<
 }
 
 export async function fetchAdminProducts(): Promise<
-  Array<{ id: number; name: string; category: string; description?: string; image?: string; price: number; inStock: boolean; featured: boolean }>
+  Array<{ id: number; name: string; category: string; description?: string; image?: string; price: number; inStock: boolean; stockQuantity?: number; lowStockThreshold?: number; featured: boolean; supplementFacts?: Product['supplementFacts'] }>
 > {
   await ensureAuth();
   const response = await fetch(`${API}/admin/products`, { headers: { ...authHeaders() } });
   if (!response.ok) throw new Error('Failed to load admin products');
   const data = (await response.json()) as {
-    products: Array<{ id: number; name: string; category: string; description?: string; image?: string; price: number; inStock: boolean; featured: boolean }>;
+    products: Array<{ id: number; name: string; category: string; description?: string; image?: string; price: number; inStock: boolean; stockQuantity?: number; lowStockThreshold?: number; featured: boolean; supplementFacts?: Product['supplementFacts'] }>;
   };
   return data.products.map((product) => ({
     ...product,
     price: Number(product.price),
+    stockQuantity: product.stockQuantity === undefined ? undefined : Number(product.stockQuantity),
+    lowStockThreshold: product.lowStockThreshold === undefined ? undefined : Number(product.lowStockThreshold),
   }));
 }
 
 export async function updateAdminProduct(
   id: number,
-  payload: { name?: string; category?: string; description?: string; image?: string; price?: number; inStock?: boolean; featured?: boolean }
+  payload: { name?: string; category?: string; description?: string; image?: string; price?: number; inStock?: boolean; stockQuantity?: number; lowStockThreshold?: number; featured?: boolean; supplementFacts?: Product['supplementFacts'] }
 ): Promise<void> {
   await ensureAuth();
   const response = await fetch(`${API}/admin/products/${id}`, {
@@ -397,8 +468,11 @@ export async function createAdminProduct(payload: {
   description?: string;
   image?: string;
   inStock?: boolean;
+  stockQuantity?: number;
+  lowStockThreshold?: number;
   featured?: boolean;
-}): Promise<{ id: number; name: string; category: string; price: number; inStock: boolean; featured: boolean }> {
+  supplementFacts?: Product['supplementFacts'];
+}): Promise<{ id: number; name: string; category: string; price: number; inStock: boolean; stockQuantity?: number; lowStockThreshold?: number; featured: boolean }> {
   await ensureAuth();
   const response = await fetch(`${API}/admin/products`, {
     method: 'POST',
@@ -407,9 +481,14 @@ export async function createAdminProduct(payload: {
   });
   if (!response.ok) throw new Error('Failed to create product');
   const data = (await response.json()) as {
-    product: { id: number; name: string; category: string; price: number; inStock: boolean; featured: boolean };
+    product: { id: number; name: string; category: string; price: number; inStock: boolean; stockQuantity?: number; lowStockThreshold?: number; featured: boolean };
   };
-  return { ...data.product, price: Number(data.product.price) };
+  return {
+    ...data.product,
+    price: Number(data.product.price),
+    stockQuantity: data.product.stockQuantity === undefined ? undefined : Number(data.product.stockQuantity),
+    lowStockThreshold: data.product.lowStockThreshold === undefined ? undefined : Number(data.product.lowStockThreshold),
+  };
 }
 
 export async function fetchAdminOverview(): Promise<{
@@ -508,4 +587,58 @@ export async function fetchAdminUsers(): Promise<
     users: Array<{ id: number; name: string; email: string; isAdmin: boolean; createdAt: string }>;
   };
   return data.users;
+}
+
+export async function fetchAdminCoupons(): Promise<Coupon[]> {
+  await ensureAuth();
+  const response = await fetch(`${API}/admin/coupons`, { headers: { ...authHeaders() } });
+  if (!response.ok) throw new Error('Failed to load coupons');
+  const data = (await response.json()) as { coupons: Coupon[] };
+  return data.coupons.map((coupon) => ({
+    ...coupon,
+    discountPercent: Number(coupon.discountPercent),
+    minSubtotal: Number(coupon.minSubtotal),
+  }));
+}
+
+export async function createAdminCoupon(payload: {
+  code: string;
+  description: string;
+  discountPercent: number;
+  minSubtotal: number;
+  active: boolean;
+  expiresAt?: string;
+}): Promise<Coupon> {
+  await ensureAuth();
+  const response = await fetch(`${API}/admin/coupons`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to create coupon');
+  const data = (await response.json()) as { coupon: Coupon };
+  return {
+    ...data.coupon,
+    discountPercent: Number(data.coupon.discountPercent),
+    minSubtotal: Number(data.coupon.minSubtotal),
+  };
+}
+
+export async function updateAdminCoupon(
+  id: number,
+  payload: { description?: string; discountPercent?: number; minSubtotal?: number; active?: boolean; expiresAt?: string }
+): Promise<Coupon> {
+  await ensureAuth();
+  const response = await fetch(`${API}/admin/coupons/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error('Failed to update coupon');
+  const data = (await response.json()) as { coupon: Coupon };
+  return {
+    ...data.coupon,
+    discountPercent: Number(data.coupon.discountPercent),
+    minSubtotal: Number(data.coupon.minSubtotal),
+  };
 }

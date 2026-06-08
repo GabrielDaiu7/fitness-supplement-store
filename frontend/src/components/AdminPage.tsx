@@ -1,14 +1,18 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
+  createAdminCoupon,
   createAdminProduct,
+  fetchAdminCoupons,
   fetchAdminFunnel,
   fetchAdminOrders,
   fetchAdminOverview,
   fetchAdminProducts,
   fetchAdminUsers,
+  updateAdminCoupon,
   updateAdminOrderStatus,
   updateAdminProduct,
 } from '../lib/api';
+import type { Coupon, Product } from '../types';
 
 type AdminProduct = {
   id: number;
@@ -18,7 +22,10 @@ type AdminProduct = {
   image?: string;
   price: number;
   inStock: boolean;
+  stockQuantity?: number;
+  lowStockThreshold?: number;
   featured: boolean;
+  supplementFacts?: Product['supplementFacts'];
 };
 
 type AdminPageProps = {
@@ -40,6 +47,7 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
     }>
   >([]);
   const [users, setUsers] = useState<Array<{ id: number; name: string; email: string; isAdmin: boolean; createdAt: string }>>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [overview, setOverview] = useState<{
     totalSales: number;
     totalOrders: number;
@@ -48,7 +56,7 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
     outOfStockProducts: number;
     activeSubscriptions: number;
   } | null>(null);
-  const [activePanel, setActivePanel] = useState<'products' | 'orders' | 'users'>('products');
+  const [activePanel, setActivePanel] = useState<'products' | 'orders' | 'users' | 'coupons'>('products');
   const [funnel, setFunnel] = useState<{
     registerStarted: number;
     registerCompleted: number;
@@ -66,6 +74,9 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
     price: '',
     description: '',
     image: '',
+    stockQuantity: '25',
+    lowStockThreshold: '5',
+    supplementHighlights: '',
     inStock: true,
     featured: false,
   });
@@ -78,23 +89,37 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
     description: '',
     image: '',
     price: '',
+    stockQuantity: '25',
+    lowStockThreshold: '5',
+    supplementHighlights: '',
     inStock: true,
     featured: false,
   });
+  const [couponForm, setCouponForm] = useState({
+    code: '',
+    description: '',
+    discountPercent: '10',
+    minSubtotal: '0',
+    expiresAt: '',
+    active: true,
+  });
+  const [couponState, setCouponState] = useState('');
 
   async function load() {
-    const [overviewData, productData, orderData, userData, funnelData] = await Promise.all([
+    const [overviewData, productData, orderData, userData, funnelData, couponData] = await Promise.all([
       fetchAdminOverview(),
       fetchAdminProducts(),
       fetchAdminOrders(),
       fetchAdminUsers(),
       fetchAdminFunnel(),
+      fetchAdminCoupons(),
     ]);
     setOverview(overviewData);
     setProducts(productData);
     setOrders(orderData);
     setUsers(userData);
     setFunnel(funnelData);
+    setCoupons(couponData);
   }
 
   useEffect(() => {
@@ -103,7 +128,7 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
 
   async function patchProduct(
     id: number,
-    payload: { name?: string; category?: string; description?: string; image?: string; price?: number; inStock?: boolean; featured?: boolean }
+    payload: { name?: string; category?: string; description?: string; image?: string; price?: number; inStock?: boolean; stockQuantity?: number; lowStockThreshold?: number; featured?: boolean; supplementFacts?: Product['supplementFacts'] }
   ) {
     await updateAdminProduct(id, payload);
     setProducts((prev) =>
@@ -117,7 +142,10 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
               image: payload.image ?? product.image,
               price: payload.price ?? product.price,
               inStock: payload.inStock ?? product.inStock,
+              stockQuantity: payload.stockQuantity ?? product.stockQuantity,
+              lowStockThreshold: payload.lowStockThreshold ?? product.lowStockThreshold,
               featured: payload.featured ?? product.featured,
+              supplementFacts: payload.supplementFacts ?? product.supplementFacts,
             }
           : product
       )
@@ -132,18 +160,24 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
   async function handleCreateProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const price = Number(createForm.price);
-    if (!createForm.name.trim() || !createForm.category.trim() || !Number.isFinite(price)) return;
+    const stockQuantity = Number(createForm.stockQuantity);
+    const lowStockThreshold = Number(createForm.lowStockThreshold);
+    if (!createForm.name.trim() || !createForm.category.trim() || !Number.isFinite(price) || !Number.isFinite(stockQuantity) || !Number.isFinite(lowStockThreshold)) return;
 
     setCreating(true);
     try {
+      const highlights = createForm.supplementHighlights.split(',').map((item) => item.trim()).filter(Boolean);
       const product = await createAdminProduct({
         name: createForm.name.trim(),
         category: createForm.category.trim(),
         price,
         description: createForm.description.trim(),
         image: createForm.image.trim(),
-        inStock: createForm.inStock,
+        inStock: stockQuantity > 0 && createForm.inStock,
+        stockQuantity,
+        lowStockThreshold,
         featured: createForm.featured,
+        supplementFacts: { servingSize: '1 serving', highlights },
       });
       setProducts((prev) => [...prev, product].sort((a, b) => a.id - b.id));
       setCreateForm({
@@ -152,6 +186,9 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
         price: '',
         description: '',
         image: '',
+        stockQuantity: '25',
+        lowStockThreshold: '5',
+        supplementHighlights: '',
         inStock: true,
         featured: false,
       });
@@ -169,6 +206,9 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
       description: product.description ?? '',
       image: product.image ?? '',
       price: String(product.price),
+      stockQuantity: String(product.stockQuantity ?? 25),
+      lowStockThreshold: String(product.lowStockThreshold ?? 5),
+      supplementHighlights: (product.supplementFacts?.highlights ?? []).join(', '),
       inStock: product.inStock,
       featured: product.featured,
     });
@@ -179,23 +219,58 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
     if (!editingProduct) return;
 
     const price = Number(updateForm.price);
-    if (!Number.isFinite(price)) return;
+    const stockQuantity = Number(updateForm.stockQuantity);
+    const lowStockThreshold = Number(updateForm.lowStockThreshold);
+    if (!Number.isFinite(price) || !Number.isFinite(stockQuantity) || !Number.isFinite(lowStockThreshold)) return;
 
     setUpdating(true);
     try {
+      const highlights = updateForm.supplementHighlights.split(',').map((item) => item.trim()).filter(Boolean);
       await patchProduct(editingProduct.id, {
         name: updateForm.name.trim(),
         category: updateForm.category.trim(),
         description: updateForm.description.trim(),
         image: updateForm.image.trim(),
         price,
-        inStock: updateForm.inStock,
+        inStock: stockQuantity > 0 && updateForm.inStock,
+        stockQuantity,
+        lowStockThreshold,
         featured: updateForm.featured,
+        supplementFacts: { ...(editingProduct.supplementFacts ?? {}), highlights },
       });
       setEditingProduct(null);
     } finally {
       setUpdating(false);
     }
+  }
+
+  async function handleCreateCoupon(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const discountPercent = Number(couponForm.discountPercent);
+    const minSubtotal = Number(couponForm.minSubtotal);
+    if (!couponForm.code.trim() || !Number.isFinite(discountPercent) || !Number.isFinite(minSubtotal)) return;
+
+    setCouponState('Saving coupon...');
+    try {
+      const coupon = await createAdminCoupon({
+        code: couponForm.code.trim().toUpperCase(),
+        description: couponForm.description.trim(),
+        discountPercent,
+        minSubtotal,
+        active: couponForm.active,
+        expiresAt: couponForm.expiresAt || undefined,
+      });
+      setCoupons((prev) => [coupon, ...prev]);
+      setCouponForm({ code: '', description: '', discountPercent: '10', minSubtotal: '0', expiresAt: '', active: true });
+      setCouponState('Coupon created.');
+    } catch {
+      setCouponState('Unable to create coupon.');
+    }
+  }
+
+  async function toggleCoupon(coupon: Coupon) {
+    const next = await updateAdminCoupon(coupon.id, { active: !coupon.active, expiresAt: coupon.expiresAt ?? undefined });
+    setCoupons((prev) => prev.map((entry) => (entry.id === coupon.id ? next : entry)));
   }
 
   return (
@@ -230,6 +305,7 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
             <button className={activePanel === 'products' ? 'chip active' : 'chip'} onClick={() => setActivePanel('products')}>Products</button>
             <button className={activePanel === 'orders' ? 'chip active' : 'chip'} onClick={() => setActivePanel('orders')}>Orders</button>
             <button className={activePanel === 'users' ? 'chip active' : 'chip'} onClick={() => setActivePanel('users')}>Users</button>
+            <button className={activePanel === 'coupons' ? 'chip active' : 'chip'} onClick={() => setActivePanel('coupons')}>Coupons</button>
           </section>
 
           {activePanel === 'products' && (
@@ -261,7 +337,7 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
                         <td>{product.name}</td>
                         <td>{product.category}</td>
                         <td>{formatPrice(Number(product.price))}</td>
-                        <td>{product.inStock ? 'In stock' : 'Out of stock'}</td>
+                        <td>{product.inStock ? `${product.stockQuantity ?? '-'} in stock` : 'Out of stock'}</td>
                         <td>{product.featured ? 'Yes' : 'No'}</td>
                         <td>
                           <div className="actions">
@@ -360,6 +436,61 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
               </div>
             </section>
           )}
+
+          {activePanel === 'coupons' && (
+            <section className="admin-panel">
+              <div className="admin-panel-head">
+                <h3>Coupons</h3>
+                <p>Create checkout promo codes and pause offers without changing code.</p>
+              </div>
+              <form className="login-form coupon-form" onSubmit={handleCreateCoupon}>
+                <div className="inline-fields">
+                  <label>Code<input value={couponForm.code} onChange={(event) => setCouponForm((prev) => ({ ...prev, code: event.target.value }))} placeholder="FUSION15" /></label>
+                  <label>Discount %<input type="number" min="1" max="100" value={couponForm.discountPercent} onChange={(event) => setCouponForm((prev) => ({ ...prev, discountPercent: event.target.value }))} /></label>
+                  <label>Minimum subtotal<input type="number" min="0" step="0.01" value={couponForm.minSubtotal} onChange={(event) => setCouponForm((prev) => ({ ...prev, minSubtotal: event.target.value }))} /></label>
+                </div>
+                <label>Description<input value={couponForm.description} onChange={(event) => setCouponForm((prev) => ({ ...prev, description: event.target.value }))} placeholder="Weekend launch offer" /></label>
+                <div className="inline-fields">
+                  <label>Expires at<input type="date" value={couponForm.expiresAt} onChange={(event) => setCouponForm((prev) => ({ ...prev, expiresAt: event.target.value }))} /></label>
+                  <label><input type="checkbox" checked={couponForm.active} onChange={(event) => setCouponForm((prev) => ({ ...prev, active: event.target.checked }))} /> Active</label>
+                </div>
+                <button className="btn btn-solid" type="submit">Create Coupon</button>
+                {couponState && <p className="state">{couponState}</p>}
+              </form>
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Code</th>
+                      <th>Description</th>
+                      <th>Discount</th>
+                      <th>Min</th>
+                      <th>Status</th>
+                      <th>Expires</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coupons.map((coupon) => (
+                      <tr key={coupon.id}>
+                        <td>{coupon.code}</td>
+                        <td>{coupon.description || '-'}</td>
+                        <td>{Number(coupon.discountPercent).toFixed(0)}%</td>
+                        <td>{formatPrice(Number(coupon.minSubtotal))}</td>
+                        <td>{coupon.active ? 'Active' : 'Paused'}</td>
+                        <td>{coupon.expiresAt ? new Date(coupon.expiresAt).toLocaleDateString() : '-'}</td>
+                        <td>
+                          <button className="btn btn-ghost" onClick={() => toggleCoupon(coupon)}>
+                            {coupon.active ? 'Pause' : 'Activate'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </>
       )}
 
@@ -383,9 +514,23 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
                 Price
                 <input type="number" min="0" step="0.01" value={createForm.price} onChange={(event) => setCreateForm((prev) => ({ ...prev, price: event.target.value }))} required />
               </label>
+              <div className="inline-fields">
+                <label>
+                  Stock quantity
+                  <input type="number" min="0" value={createForm.stockQuantity} onChange={(event) => setCreateForm((prev) => ({ ...prev, stockQuantity: event.target.value }))} />
+                </label>
+                <label>
+                  Low-stock threshold
+                  <input type="number" min="0" value={createForm.lowStockThreshold} onChange={(event) => setCreateForm((prev) => ({ ...prev, lowStockThreshold: event.target.value }))} />
+                </label>
+              </div>
               <label>
                 Description
                 <input value={createForm.description} onChange={(event) => setCreateForm((prev) => ({ ...prev, description: event.target.value }))} />
+              </label>
+              <label>
+                Supplement highlights
+                <input value={createForm.supplementHighlights} onChange={(event) => setCreateForm((prev) => ({ ...prev, supplementHighlights: event.target.value }))} placeholder="25g protein, low sugar, fast mixing" />
               </label>
               <label>
                 Image URL
@@ -430,6 +575,20 @@ export function AdminPage({ formatPrice }: AdminPageProps) {
               <label>
                 Price
                 <input type="number" min="0" step="0.01" value={updateForm.price} onChange={(event) => setUpdateForm((prev) => ({ ...prev, price: event.target.value }))} required />
+              </label>
+              <div className="inline-fields">
+                <label>
+                  Stock quantity
+                  <input type="number" min="0" value={updateForm.stockQuantity} onChange={(event) => setUpdateForm((prev) => ({ ...prev, stockQuantity: event.target.value }))} />
+                </label>
+                <label>
+                  Low-stock threshold
+                  <input type="number" min="0" value={updateForm.lowStockThreshold} onChange={(event) => setUpdateForm((prev) => ({ ...prev, lowStockThreshold: event.target.value }))} />
+                </label>
+              </div>
+              <label>
+                Supplement highlights
+                <input value={updateForm.supplementHighlights} onChange={(event) => setUpdateForm((prev) => ({ ...prev, supplementHighlights: event.target.value }))} placeholder="25g protein, low sugar, fast mixing" />
               </label>
               <div className="actions">
                 <label><input type="checkbox" checked={updateForm.inStock} onChange={(event) => setUpdateForm((prev) => ({ ...prev, inStock: event.target.checked }))} /> In Stock</label>

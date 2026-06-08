@@ -11,10 +11,18 @@ type SearchDrawerProps = {
 export function SearchDrawer({ products, onClose, formatPrice }: SearchDrawerProps) {
   const [query, setQuery] = useState('');
   const featured = useMemo(() => products.slice(0, 4), [products]);
+  const popularSearches = ['Best Sellers', 'Protein', 'Creatine', 'Hydration'];
   const filtered = useMemo(() => {
     if (!query.trim()) return featured;
+    const normalizedQuery = query.trim().toLowerCase();
     return products
-      .filter((product) => product.name.toLowerCase().includes(query.toLowerCase()))
+      .filter(
+        (product) =>
+          product.name.toLowerCase().includes(normalizedQuery) ||
+          product.description.toLowerCase().includes(normalizedQuery) ||
+          product.category.toLowerCase().includes(normalizedQuery) ||
+          (product.goals ?? []).some((goal) => goal.toLowerCase().includes(normalizedQuery))
+      )
       .slice(0, 6);
   }, [featured, products, query]);
 
@@ -32,11 +40,13 @@ export function SearchDrawer({ products, onClose, formatPrice }: SearchDrawerPro
         </div>
         <p className="drawer-title">Popular Searches</p>
         <div className="drawer-links">
-          <p>Best Sellers</p>
-          <p>New Launches</p>
-          <p>Stacks</p>
+          {popularSearches.map((search) => (
+            <button key={search} type="button" onClick={() => setQuery(search)}>
+              {search}
+            </button>
+          ))}
         </div>
-        <p className="drawer-title">Featured Products</p>
+        <p className="drawer-title">{query.trim() ? 'Search Results' : 'Featured Products'}</p>
         <div className="drawer-product-grid">
           {filtered.map((product) => (
             <Link to={`/product/${product.id}`} key={product.id} className="drawer-product" onClick={onClose}>
@@ -45,6 +55,7 @@ export function SearchDrawer({ products, onClose, formatPrice }: SearchDrawerPro
               <span>{formatPrice(product.price)}</span>
             </Link>
           ))}
+          {query.trim() && filtered.length === 0 && <p className="state">No products found.</p>}
         </div>
       </aside>
     </div>

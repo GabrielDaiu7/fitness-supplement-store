@@ -1,23 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AccountPage } from './components/AccountPage';
 import { AdminPage } from './components/AdminPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutFlow } from './components/CheckoutFlow';
+import { ComparisonPage } from './components/ComparisonPage';
 import { Header } from './components/Header';
 import { LoginModal } from './components/LoginModal';
 import { ProductSection } from './components/ProductSection';
 import { SearchDrawer } from './components/SearchDrawer';
+import { StackBuilderPage } from './components/StackBuilderPage';
 import { fallbackProducts } from './data/storefront';
 import {
   fetchCategories,
   fetchProducts,
+  fetchWishlist,
   getMe,
+  addWishlistItem,
   login,
   logout,
   register,
+  removeWishlistItem,
   resendVerification,
   sendWelcomePerkEmail,
+  subscribeNewsletter,
+  submitProductReview,
   submitAdvancedCheckout,
   trackAuthEvent,
   verifyEmail,
@@ -43,6 +50,86 @@ function formatStars(rating: number): string {
   return '★'.repeat(rounded);
 }
 
+const infoPages: Record<string, { title: string; eyebrow: string; body: string[] }> = {
+  about: {
+    eyebrow: 'Company',
+    title: 'About Fusion',
+    body: [
+      'Fusion is built for lifters and everyday athletes who want clear formulas, reliable routines, and fewer confusing supplement choices.',
+      'Every product page highlights the goal, usage, ingredients, and testing claims a customer needs before adding it to a stack.',
+    ],
+  },
+  science: {
+    eyebrow: 'Science',
+    title: 'Formula Standards',
+    body: [
+      'Our product standards focus on transparent labels, practical serving sizes, and ingredient combinations that make sense for training, recovery, and daily wellness.',
+      'This page is ready for deeper citations, lab certificates, and ingredient explainers as the catalog grows.',
+    ],
+  },
+  careers: {
+    eyebrow: 'Company',
+    title: 'Careers',
+    body: ['Fusion is not hiring through this demo store yet.', 'Future roles can be listed here for operations, customer support, performance nutrition, and ecommerce.'],
+  },
+  help: {
+    eyebrow: 'Support',
+    title: 'Help Center',
+    body: [
+      'Customers can manage account details, view orders, submit support tickets, and request returns from the account dashboard.',
+      'For a live store, this page should include contact hours, FAQ categories, and response-time expectations.',
+    ],
+  },
+  returns: {
+    eyebrow: 'Support',
+    title: 'Shipping & Returns',
+    body: ['Orders currently support standard and express shipping options during checkout.', 'Return requests can be submitted from the account support section and tracked by the support team.'],
+  },
+  reviews: {
+    eyebrow: 'Community',
+    title: 'Customer Reviews',
+    body: ['Product reviews are shown on product pages from catalog data.', 'The next step is verified-buyer review submission, moderation, and review filtering.'],
+  },
+  subscriptions: {
+    eyebrow: 'Account',
+    title: 'Manage Subscriptions',
+    body: [
+      'Checkout can record subscription frequency, but real recurring billing is not connected yet.',
+      'Once Stripe subscriptions are added, this page can become the customer portal entry point.',
+    ],
+  },
+  distributor: {
+    eyebrow: 'Partners',
+    title: 'Distributor Login',
+    body: ['Wholesale and distributor access is not active yet.', 'This page can later support partner pricing, bulk orders, and sales rep accounts.'],
+  },
+  military: {
+    eyebrow: 'Discounts',
+    title: 'Military Discount',
+    body: [
+      'A dedicated discount verification flow is not connected yet.',
+      'For now, admins can create a coupon code from the dashboard and share it with approved customers.',
+    ],
+  },
+};
+
+function InfoPage({ pageKey }: { pageKey: keyof typeof infoPages }) {
+  const page = infoPages[pageKey];
+  return (
+    <main className="shell page-block">
+      <section className="page-banner">
+        <p>{page.eyebrow}</p>
+        <h2>{page.title}</h2>
+      </section>
+      <section className="account-panel info-panel">
+        {page.body.map((paragraph) => (
+          <p key={paragraph} className="state">{paragraph}</p>
+        ))}
+      </section>
+    </main>
+  );
+}
+
 function CategoryPage({
   categories,
   products,
@@ -50,6 +137,8 @@ function CategoryPage({
   error,
   onDetails,
   onAdd,
+  wishlistProductIds,
+  onToggleWishlist,
   formatPrice,
 }: {
   categories: string[];
@@ -58,11 +147,21 @@ function CategoryPage({
   error: string;
   onDetails: (product: Product) => void;
   onAdd: (product: Product) => void;
+  wishlistProductIds: number[];
+  onToggleWishlist: (product: Product) => void;
   formatPrice: (usdAmount: number) => string;
 }) {
   const navigate = useNavigate();
   const { categorySlug } = useParams();
   const selectedCategory = categories.find((category) => toCategorySlug(category) === categorySlug);
+
+  if (loading && !selectedCategory) {
+    return (
+      <main className="shell page-block">
+        <p className="state">Loading category...</p>
+      </main>
+    );
+  }
 
   if (!selectedCategory) {
     return <Navigate to="/" replace />;
@@ -93,6 +192,8 @@ function CategoryPage({
         }}
         onDetails={onDetails}
         onAdd={onAdd}
+        wishlistProductIds={wishlistProductIds}
+        onToggleWishlist={onToggleWishlist}
         formatPrice={formatPrice}
       />
     </main>
@@ -105,18 +206,27 @@ function ProductDetailPage({
   onAdd,
   account,
   formatPrice,
+  wishlistProductIds,
+  onToggleWishlist,
+  onReviewSubmitted,
 }: {
   products: Product[];
   loading: boolean;
   onAdd: (product: Product) => void;
   account: User | null;
   formatPrice: (usdAmount: number) => string;
+  wishlistProductIds: number[];
+  onToggleWishlist: (product: Product) => void;
+  onReviewSubmitted: (productId: number, review: NonNullable<Product['reviews']>[number]) => void;
 }) {
   const navigate = useNavigate();
   const { productId } = useParams();
   const product = products.find((entry) => entry.id === Number(productId));
   const galleryImages = product?.images && product.images.length > 0 ? product.images : product ? [product.image] : [];
   const [activeImage, setActiveImage] = useState('');
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewText, setReviewText] = useState('');
+  const [reviewState, setReviewState] = useState('');
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [productId]);
@@ -133,6 +243,7 @@ function ProductDetailPage({
   }
 
   if (!product) return <Navigate to="/" replace />;
+  const currentProduct = product;
   const currentImage = activeImage || galleryImages[0];
 
   const relatedProducts = products
@@ -140,6 +251,12 @@ function ProductDetailPage({
     .slice(0, 3);
 
   const ingredients = product.ingredients ?? ['Active Performance Blend', 'Electrolyte Matrix', 'Digestive Enzyme Support'];
+  const facts = product.supplementFacts;
+  const isLowStock =
+    product.inStock !== false &&
+    typeof product.stockQuantity === 'number' &&
+    typeof product.lowStockThreshold === 'number' &&
+    product.stockQuantity <= product.lowStockThreshold;
   const faqs =
     product.faqs ??
     [
@@ -148,12 +265,29 @@ function ProductDetailPage({
       { q: 'Can I stack this with other products?', a: 'Yes, this product is designed to pair with protein and recovery formulas.' },
     ];
   const reviews =
-    product.reviews?.map((review) => ({ name: review.name, score: review.rating, body: review.text })) ??
+    product.reviews?.map((review) => ({ name: review.name, score: review.rating, body: review.text, verified: review.verifiedPurchase })) ??
     [
-      { name: 'Alex M.', score: 5, body: 'Noticeable boost in training output and better recovery by week two.' },
-      { name: 'Sam R.', score: 5, body: 'Tastes great and mixes fast. Solid daily staple.' },
-      { name: 'Jordan T.', score: 4, body: 'Clean formula and no crash. Works exactly as expected.' },
+      { name: 'Alex M.', score: 5, body: 'Noticeable boost in training output and better recovery by week two.', verified: false },
+      { name: 'Sam R.', score: 5, body: 'Tastes great and mixes fast. Solid daily staple.', verified: false },
+      { name: 'Jordan T.', score: 4, body: 'Clean formula and no crash. Works exactly as expected.', verified: false },
     ];
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!account) {
+      setReviewState('Please log in to submit a verified review.');
+      return;
+    }
+    setReviewState('Saving review...');
+    try {
+      const review = await submitProductReview(currentProduct.id, { rating: reviewRating, text: reviewText });
+      onReviewSubmitted(currentProduct.id, review);
+      setReviewText('');
+      setReviewState('Review saved as a verified purchase.');
+    } catch (error) {
+      setReviewState(error instanceof Error ? error.message : 'Unable to save review.');
+    }
+  }
 
   return (
     <main className="shell page-block">
@@ -192,13 +326,21 @@ function ProductDetailPage({
           </p>
           <p className="pdp-description">{product.description}</p>
           <p className="pdp-price">{formatPrice(product.price)}</p>
+          {product.inStock === false && <p className="state warn">This product is currently out of stock.</p>}
+          {isLowStock && <p className="state warn">Low stock: only {product.stockQuantity} left.</p>}
+          {product.inStock !== false && !isLowStock && typeof product.stockQuantity === 'number' && <p className="state">{product.stockQuantity} units available.</p>}
           <div className="pdp-certs">
             {(product.certifications ?? ['Lab Tested', 'GMP']).map((badge) => (
               <span key={badge}>{badge}</span>
             ))}
           </div>
           <div className="pdp-actions">
-            <button className="btn btn-solid" onClick={() => onAdd(product)}>Add to Cart</button>
+            <button className="btn btn-solid" disabled={product.inStock === false} onClick={() => onAdd(product)}>
+              {product.inStock === false ? 'Out of Stock' : 'Add to Cart'}
+            </button>
+            <button className="btn btn-ghost" onClick={() => onToggleWishlist(product)}>
+              {wishlistProductIds.includes(product.id) ? 'Saved' : 'Save'}
+            </button>
             <button className="btn btn-ghost" onClick={() => navigate(-1)}>Back</button>
           </div>
         </article>
@@ -208,6 +350,12 @@ function ProductDetailPage({
         <article className="pdp-card">
           <h3>Ingredients</h3>
           {ingredients.map((item) => <p key={item}>{item}</p>)}
+        </article>
+        <article className="pdp-card supplement-facts">
+          <h3>Supplement Facts</h3>
+          <p>Serving size: {facts?.servingSize ?? '1 serving'}</p>
+          <p>Servings: {facts?.servingsPerContainer ?? product.servings ?? 'Varies'}</p>
+          {(facts?.highlights ?? ingredients.slice(0, 3)).map((item) => <p key={item}>{item}</p>)}
         </article>
         <article className="pdp-card">
           <h3>Usage</h3>
@@ -228,6 +376,18 @@ function ProductDetailPage({
 
       <section className="pdp-card">
         <h3>Reviews</h3>
+        <form className="login-form review-form" onSubmit={handleReviewSubmit}>
+          <label>Rating
+            <select className="checkout-input" value={reviewRating} onChange={(event) => setReviewRating(Number(event.target.value))}>
+              {[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} stars</option>)}
+            </select>
+          </label>
+          <label>Review
+            <input value={reviewText} onChange={(event) => setReviewText(event.target.value)} placeholder="Share what changed in your training..." />
+          </label>
+          <button className="btn btn-solid" type="submit">Submit Verified Review</button>
+          {reviewState && <p className="state">{reviewState}</p>}
+        </form>
         {reviews.map((review) => (
           <article key={review.name} className="review-row">
             <p><span className="rating-stars">{'★'.repeat(review.score)}</span> by {review.name}</p>
@@ -250,7 +410,9 @@ function ProductDetailPage({
                   <span>{formatPrice(related.price)}</span>
                   <div className="actions">
                     <button className="btn btn-ghost" onClick={() => navigate(`/product/${related.id}`)}>View</button>
-                    <button className="btn btn-solid mini" onClick={() => onAdd(related)}>Add</button>
+                    <button className="btn btn-solid mini" disabled={related.inStock === false} onClick={() => onAdd(related)}>
+                      {related.inStock === false ? 'Out' : 'Add'}
+                    </button>
                   </div>
                 </div>
               </article>
@@ -283,10 +445,12 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [activeBundleCode, setActiveBundleCode] = useState('');
   const [checkoutState, setCheckoutState] = useState<'idle' | 'submitting'>('idle');
   const [loginOpen, setLoginOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [account, setAccount] = useState<User | null>(null);
+  const [wishlistProducts, setWishlistProducts] = useState<Product[]>([]);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [registerSuccess, setRegisterSuccess] = useState('');
   const [selectedCurrency, setSelectedCurrency] = useState('USD');
@@ -295,13 +459,23 @@ export default function App() {
   const [welcomePerkOpen, setWelcomePerkOpen] = useState(false);
   const [welcomeCouponCode, setWelcomeCouponCode] = useState('');
   const [welcomePerkState, setWelcomePerkState] = useState('');
+  const [welcomePerkClaimedBefore, setWelcomePerkClaimedBefore] = useState(false);
   const [scratchReady, setScratchReady] = useState(false);
   const [scratchClaimed, setScratchClaimed] = useState(false);
+  const [newsletterEmail, setNewsletterEmail] = useState('');
+  const [newsletterState, setNewsletterState] = useState('');
   const scratchCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const savedCart = localStorage.getItem('cart_items');
-    if (savedCart) setCartItems(JSON.parse(savedCart) as CartItem[]);
+    if (savedCart) {
+      try {
+        const parsedCart = JSON.parse(savedCart) as CartItem[];
+        setCartItems(parsedCart.filter((item) => item.inStock !== false && item.quantity > 0));
+      } catch {
+        localStorage.removeItem('cart_items');
+      }
+    }
     const savedCurrency = localStorage.getItem('currency_code');
     const savedCountry = localStorage.getItem('currency_country');
     if (savedCurrency) setSelectedCurrency(savedCurrency);
@@ -349,6 +523,14 @@ export default function App() {
   }, [selectedCurrency, selectedCountry]);
 
   useEffect(() => {
+    if (!account) {
+      setWishlistProducts([]);
+      return;
+    }
+    fetchWishlist().then(setWishlistProducts).catch(() => setWishlistProducts([]));
+  }, [account]);
+
+  useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [location.pathname]);
 
@@ -381,12 +563,17 @@ export default function App() {
     return map;
   }, [products, categoryTargets]);
   const allReviews = useMemo(() => products.flatMap((product) => product.reviews ?? []), [products]);
+  const wishlistProductIds = useMemo(() => wishlistProducts.map((product) => product.id), [wishlistProducts]);
   const globalRating = useMemo(() => {
     if (!allReviews.length) return 0;
     return allReviews.reduce((sum, review) => sum + review.rating, 0) / allReviews.length;
   }, [allReviews]);
 
   function addToCart(product: Product) {
+    if (product.inStock === false) {
+      setError(`${product.name} is currently out of stock.`);
+      return;
+    }
     setCartItems((prev) => {
       const found = prev.find((item) => item.id === product.id);
       if (found) {
@@ -394,6 +581,7 @@ export default function App() {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
+    setActiveBundleCode('');
     setCartOpen(true);
   }
 
@@ -416,20 +604,35 @@ export default function App() {
     subscribeFrequency?: string;
   }) {
     if (!cartItems.length || checkoutState === 'submitting') return;
+    if (!account) {
+      setCheckoutOpen(false);
+      setLoginOpen(true);
+      setError('Please log in before checkout.');
+      return;
+    }
+    if (!account.emailVerified) {
+      setCheckoutOpen(false);
+      navigate('/account');
+      setError('Please verify your email before checkout.');
+      return;
+    }
     try {
+      setError('');
       setCheckoutState('submitting');
       await submitAdvancedCheckout({
         items: cartItems.map((item) => ({ id: item.id, quantity: item.quantity })),
         promoCode: payload.promoCode,
+        bundleCode: activeBundleCode || undefined,
         shippingMethod: payload.shippingMethod,
         subscribeFrequency: payload.subscribeFrequency,
         shipping: payload.shipping,
       });
       setCartItems([]);
+      setActiveBundleCode('');
       setCheckoutOpen(false);
       setCartOpen(false);
-    } catch {
-      setError('Checkout failed. Please login and verify details.');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Checkout failed. Please verify details.');
     } finally {
       setCheckoutState('idle');
     }
@@ -452,6 +655,9 @@ export default function App() {
       setLoginOpen(false);
       setWelcomeCouponCode(user.welcomeCoupon || 'WELCOME10');
       setWelcomePerkState('');
+      setWelcomePerkClaimedBefore(Boolean(user.welcomePerkClaimedAt));
+      setScratchReady(false);
+      setScratchClaimed(false);
       setWelcomePerkOpen(true);
       return null;
     } catch {
@@ -469,6 +675,9 @@ export default function App() {
       setRegisterSuccess('Account created successfully. You are now logged in.');
       setWelcomeCouponCode(result.welcomeCoupon || 'WELCOME10');
       setWelcomePerkState('');
+      setWelcomePerkClaimedBefore(Boolean(result.user.welcomePerkClaimedAt));
+      setScratchReady(false);
+      setScratchClaimed(false);
       setWelcomePerkOpen(true);
       await trackAuthEvent('register_funnel_completed', email, { hasWelcomeCoupon: Boolean(result.welcomeCoupon) });
       navigate('/account');
@@ -478,8 +687,8 @@ export default function App() {
     }
   }
 
-  async function handleVerifyEmail(token: string): Promise<boolean> {
-    const ok = await verifyEmail(token);
+  async function handleVerifyEmail(email: string, token: string): Promise<boolean> {
+    const ok = await verifyEmail(email, token);
     if (ok) {
       const next = await getMe();
       setAccount(next);
@@ -495,7 +704,53 @@ export default function App() {
   async function handleLogout() {
     await logout();
     setAccount(null);
+    setWishlistProducts([]);
     setAccountMenuOpen(false);
+  }
+
+  async function handleToggleWishlist(product: Product) {
+    if (!account) {
+      setLoginOpen(true);
+      setError('Please log in to save favorites.');
+      return;
+    }
+    try {
+      const next = wishlistProductIds.includes(product.id)
+        ? await removeWishlistItem(product.id)
+        : await addWishlistItem(product.id);
+      setWishlistProducts(next);
+      setError('');
+    } catch {
+      setError('Unable to update wishlist right now.');
+    }
+  }
+
+  function handleReviewSubmitted(productId: number, review: NonNullable<Product['reviews']>[number]) {
+    setProducts((prev) =>
+      prev.map((product) =>
+        product.id === productId
+          ? {
+              ...product,
+              reviews: [
+                review,
+                ...(product.reviews ?? []).filter((entry) => !(entry.name === review.name && entry.verifiedPurchase)),
+              ],
+            }
+          : product
+      )
+    );
+  }
+
+  async function handleNewsletterSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setNewsletterState('Signing up...');
+    try {
+      const result = await subscribeNewsletter(newsletterEmail.trim().toLowerCase());
+      setNewsletterEmail('');
+      setNewsletterState(`You're in. Use ${result.couponCode} for your launch discount.`);
+    } catch (error) {
+      setNewsletterState(error instanceof Error ? error.message : 'Newsletter signup failed.');
+    }
   }
 
   function handleReorder(items: Array<{ id: number; quantity: number }>) {
@@ -507,6 +762,29 @@ export default function App() {
       .filter((value): value is CartItem => Boolean(value));
     if (!next.length) return;
     setCartItems(next);
+    setActiveBundleCode('');
+    setCartOpen(true);
+  }
+
+  function handleAddBundle(bundleCode: string, productIds: readonly number[]) {
+    const bundleItems = productIds
+      .map((id) => products.find((product) => product.id === id))
+      .filter((product): product is Product => product !== undefined && product.inStock !== false)
+      .map((product) => ({ ...product, quantity: 1 }));
+    if (!bundleItems.length) return;
+    setCartItems((prev) => {
+      let next = [...prev];
+      for (const product of bundleItems) {
+        const found = next.find((item) => item.id === product.id);
+        if (found) {
+          next = next.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item));
+        } else {
+          next.push(product);
+        }
+      }
+      return next;
+    });
+    setActiveBundleCode(bundleCode);
     setCartOpen(true);
   }
 
@@ -618,7 +896,7 @@ export default function App() {
                     <p className="hero-rating">{formatStars(globalRating)} {globalRating.toFixed(1)} from {allReviews.length} verified reviews</p>
                     <h1>Fuel Your Evolution</h1>
                     <p>Fully-dosed elite supplements that help you lift heavier, run farther, and live healthier.</p>
-                    <button className="hero-cta" onClick={() => navigate(categoryTargets[0] ? `/category/${toCategorySlug(categoryTargets[0])}` : '/')}>
+                    <button className="hero-cta" onClick={() => navigate('/category/all')}>
                       Shop All Supplements
                     </button>
                   </article>
@@ -629,9 +907,12 @@ export default function App() {
                 <section className="best-sellers">
                   <div className="section-row">
                     <h2>Best Sellers <span>New</span></h2>
-                    <button className="pill-btn" onClick={() => navigate('/category/all')}>
-                      View All
-                    </button>
+                    <div className="actions">
+                      <button className="pill-btn" onClick={() => navigate('/compare')}>Compare</button>
+                      <button className="pill-btn" onClick={() => navigate('/category/all')}>
+                        View All
+                      </button>
+                    </div>
                   </div>
                   {loading && <p className="status">Loading products...</p>}
                   {!loading && error && <p className="status">{error}</p>}
@@ -707,11 +988,13 @@ export default function App() {
                       <img src="https://images.unsplash.com/photo-1517836357463-d25dfeac3438?auto=format&fit=crop&w=1200&q=80" alt="Elite Performance Stack" />
                       <h3>Elite Performance Stack</h3>
                       <p>Three best-in-class supplements to elevate energy, strength, and recovery.</p>
+                      <button className="btn btn-solid mini" onClick={() => handleAddBundle('PERFORMANCE', [3, 2, 6])}>Add Stack</button>
                     </article>
                     <article>
                       <img src="https://images.unsplash.com/photo-1571731956672-f2b94d7dd0cb?auto=format&fit=crop&w=1200&q=80" alt="Daily Wellness Stack" />
                       <h3>Daily Wellness Stack</h3>
                       <p>Cover nutritional bases with essentials that keep you energized and healthy.</p>
+                      <button className="btn btn-solid mini" onClick={() => handleAddBundle('WELLNESS', [4, 5, 6])}>Add Stack</button>
                     </article>
                   </div>
                 </section>
@@ -736,7 +1019,7 @@ export default function App() {
                 <section className="final-cta">
                   <h3>Build Your Stack in 60 Seconds</h3>
                   <p>Answer a few questions and get your personalized daily routine.</p>
-                  <button className="pill-btn" onClick={() => navigate(categoryTargets[0] ? `/category/${toCategorySlug(categoryTargets[0])}` : '/')}>
+                  <button className="pill-btn" onClick={() => navigate('/stack-builder')}>
                     Start Stack Builder
                   </button>
                 </section>
@@ -747,17 +1030,28 @@ export default function App() {
 
         <Route
           path="/category/:categorySlug"
-          element={<CategoryPage categories={categories} products={products} loading={loading} error={error} onDetails={(product) => navigate(`/product/${product.id}`)} onAdd={addToCart} formatPrice={formatPrice} />}
+          element={<CategoryPage categories={categories} products={products} loading={loading} error={error} onDetails={(product) => navigate(`/product/${product.id}`)} onAdd={addToCart} wishlistProductIds={wishlistProductIds} onToggleWishlist={handleToggleWishlist} formatPrice={formatPrice} />}
         />
-        <Route path="/product/:productId" element={<ProductDetailPage products={products} loading={loading} onAdd={addToCart} account={account} formatPrice={formatPrice} />} />
+        <Route path="/product/:productId" element={<ProductDetailPage products={products} loading={loading} onAdd={addToCart} account={account} formatPrice={formatPrice} wishlistProductIds={wishlistProductIds} onToggleWishlist={handleToggleWishlist} onReviewSubmitted={handleReviewSubmitted} />} />
+        <Route path="/compare" element={<ComparisonPage products={products} formatPrice={formatPrice} />} />
+        <Route path="/stack-builder" element={<StackBuilderPage products={products} formatPrice={formatPrice} onAddBundle={handleAddBundle} />} />
         <Route
           path="/account"
           element={account ? <AccountPage account={account} products={products} formatPrice={formatPrice} onResendVerification={handleResendVerification} onVerifyEmail={handleVerifyEmail} onProfileSaved={async () => {
             const next = await getMe();
             setAccount(next);
-          }} onReorder={handleReorder} /> : <Navigate to="/" replace />}
+          }} onReorder={handleReorder} wishlistProducts={wishlistProducts} onToggleWishlist={handleToggleWishlist} onAdd={addToCart} /> : <Navigate to="/" replace />}
         />
         <Route path="/admin" element={account?.isAdmin ? <AdminPage formatPrice={formatPrice} /> : <Navigate to="/" replace />} />
+        <Route path="/about" element={<InfoPage pageKey="about" />} />
+        <Route path="/science" element={<InfoPage pageKey="science" />} />
+        <Route path="/careers" element={<InfoPage pageKey="careers" />} />
+        <Route path="/help" element={<InfoPage pageKey="help" />} />
+        <Route path="/returns" element={<InfoPage pageKey="returns" />} />
+        <Route path="/reviews" element={<InfoPage pageKey="reviews" />} />
+        <Route path="/subscriptions" element={<InfoPage pageKey="subscriptions" />} />
+        <Route path="/distributor" element={<InfoPage pageKey="distributor" />} />
+        <Route path="/military" element={<InfoPage pageKey="military" />} />
         <Route path="/privacy" element={<main className="shell page-block"><section className="account-panel"><h3>Privacy Policy</h3><p className="state">We store account, order, and preference data to provide checkout, support, and personalization. You can request data export or deletion from your account support section.</p></section></main>} />
         <Route path="/terms" element={<main className="shell page-block"><section className="account-panel"><h3>Terms</h3><p className="state">By using this store you agree to account, purchase, and returns policies. Subscription orders can be edited or cancelled anytime before renewal.</p></section></main>} />
       </Routes>
@@ -775,10 +1069,18 @@ export default function App() {
           <article><h4>Fast Shipping</h4><p>Orders ship within 1-2 days.</p></article>
         </section>
         <section className="footer-links shell">
-          <article className="newsletter"><p>Stay on track with your goals</p><h4>Receive tips, articles & offers from Fusion</h4><div><input placeholder="E-mail" /><button>Subscribe</button></div></article>
-          <article><h5>Company</h5><p>About</p><p>Science</p><p>Careers</p></article>
-          <article><h5>Support</h5><p>Help Center</p><p>Shipping & Returns</p><p>Reviews</p><Link to="/privacy">Privacy Policy</Link><Link to="/terms">Terms</Link></article>
-          <article><h5>Account & Rewards</h5><p>Manage Subscriptions</p><p>Distributor Login</p><p>Military Discount</p></article>
+          <article className="newsletter">
+            <p>Stay on track with your goals</p>
+            <h4>Receive tips, articles & offers from Fusion</h4>
+            <form onSubmit={handleNewsletterSignup}>
+              <input placeholder="E-mail" value={newsletterEmail} onChange={(event) => setNewsletterEmail(event.target.value)} />
+              <button type="submit">Subscribe</button>
+            </form>
+            {newsletterState && <p className="state">{newsletterState}</p>}
+          </article>
+          <article><h5>Company</h5><Link to="/about">About</Link><Link to="/science">Science</Link><Link to="/careers">Careers</Link></article>
+          <article><h5>Support</h5><Link to="/help">Help Center</Link><Link to="/returns">Shipping & Returns</Link><Link to="/reviews">Reviews</Link><Link to="/privacy">Privacy Policy</Link><Link to="/terms">Terms</Link></article>
+          <article><h5>Account & Rewards</h5><Link to="/subscriptions">Manage Subscriptions</Link><Link to="/distributor">Distributor Login</Link><Link to="/military">Military Discount</Link></article>
         </section>
         <div className="footer-wordmark">
           <span className="brand-mark" aria-hidden="true" />
@@ -786,7 +1088,7 @@ export default function App() {
         </div>
       </footer>
 
-      {cartOpen && <CartDrawer items={cartItems} total={cartTotal} formatPrice={formatPrice} onClose={() => setCartOpen(false)} onStartCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} onUpdateQty={updateQuantity} onRemove={removeItem} />}
+      {cartOpen && <CartDrawer items={cartItems} total={cartTotal} bundleCode={activeBundleCode} formatPrice={formatPrice} onClose={() => setCartOpen(false)} onStartCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} onUpdateQty={updateQuantity} onRemove={removeItem} />}
       {searchOpen && <SearchDrawer products={products} formatPrice={formatPrice} onClose={() => setSearchOpen(false)} />}
       {checkoutOpen && <CheckoutFlow items={cartItems} total={cartTotal} formatPrice={formatPrice} submitting={checkoutState === 'submitting'} onClose={() => setCheckoutOpen(false)} onPlaceOrder={handleCheckout} />}
       {loginOpen && (
@@ -813,6 +1115,7 @@ export default function App() {
           <div className="modal welcome-perk-modal">
             <div className="modal-head welcome-perk-head">
               <h3>Welcome Reward Unlocked</h3>
+              {welcomePerkClaimedBefore && <span className="welcome-perk-badge">Already Claimed</span>}
               <button className="btn btn-ghost" onClick={() => setWelcomePerkOpen(false)}>Close</button>
             </div>
             <p className="welcome-perk-copy">Use your launch perks now or send them straight to your inbox for later.</p>

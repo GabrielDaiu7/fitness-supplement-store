@@ -12,10 +12,18 @@ export type Product = {
   ingredients?: string[];
   usage?: string;
   faqs?: Array<{ q: string; a: string }>;
-  reviews?: Array<{ name: string; rating: number; text: string }>;
+  reviews?: Array<{ name: string; rating: number; text: string; verifiedPurchase?: boolean; createdAt?: string }>;
   goals?: string[];
   inStock?: boolean;
+  stockQuantity?: number;
+  lowStockThreshold?: number;
   featured?: boolean;
+  supplementFacts?: {
+    servingSize?: string;
+    servingsPerContainer?: number;
+    highlights?: string[];
+    [key: string]: unknown;
+  };
   certifications?: string[];
 };
 
@@ -26,6 +34,7 @@ export type CartItem = Product & {
 export type CheckoutPayload = {
   items: Array<{ id: number; quantity: number }>;
   promoCode?: string;
+  bundleCode?: string;
   shippingMethod?: 'standard' | 'express';
   subscribeFrequency?: string;
   shipping?: {
@@ -57,6 +66,7 @@ export type User = {
   isAdmin: boolean;
   emailVerified?: boolean;
   welcomeCoupon?: string;
+  welcomePerkClaimedAt?: string | null;
   goal?: string;
   dietType?: string;
   trainingFrequency?: string;
@@ -83,4 +93,15 @@ export type PaymentMethod = {
   expMonth: number;
   expYear: number;
   isDefault: boolean;
+};
+
+export type Coupon = {
+  id: number;
+  code: string;
+  description: string;
+  discountPercent: number;
+  minSubtotal: number;
+  active: boolean;
+  expiresAt?: string | null;
+  createdAt?: string;
 };

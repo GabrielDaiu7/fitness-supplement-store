@@ -19,9 +19,12 @@ type AccountPageProps = {
   products: Product[];
   formatPrice: (usdAmount: number) => string;
   onResendVerification: (email: string) => Promise<string | null>;
-  onVerifyEmail: (code: string) => Promise<boolean>;
+  onVerifyEmail: (email: string, code: string) => Promise<boolean>;
   onProfileSaved: () => Promise<void>;
   onReorder: (items: Array<{ id: number; quantity: number }>) => void;
+  wishlistProducts: Product[];
+  onToggleWishlist: (product: Product) => void;
+  onAdd: (product: Product) => void;
 };
 
 export function AccountPage({
@@ -32,6 +35,9 @@ export function AccountPage({
   onVerifyEmail,
   onProfileSaved,
   onReorder,
+  wishlistProducts,
+  onToggleWishlist,
+  onAdd,
 }: AccountPageProps) {
   const [orders, setOrders] = useState<Array<{ orderCode: string; total: number; status: string; createdAt: string; subscriptionFrequency?: string }>>([]);
   const [orderDetails, setOrderDetails] = useState<Record<string, { items: Array<{ productId: number; name: string; quantity: number; unitPrice: number }> }>>({});
@@ -120,7 +126,7 @@ export function AccountPage({
             <input className="verify-code-input" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="Enter 6-digit code" maxLength={6} />
           </label>
           <div className="verify-code-actions">
-            <button className="btn btn-solid" onClick={async () => setVerificationState((await onVerifyEmail(verificationCode.trim())) ? 'Email verified successfully.' : 'Invalid/expired verification code.')}>Verify code</button>
+            <button className="btn btn-solid" onClick={async () => setVerificationState((await onVerifyEmail(account.email, verificationCode.trim())) ? 'Email verified successfully.' : 'Invalid/expired verification code.')}>Verify code</button>
             <button className="btn btn-ghost" onClick={async () => { await onResendVerification(account.email); setVerificationState('Verification code sent.'); }}>Resend code</button>
           </div>
           {verificationState && <p className="state verify-code-state">{verificationState}</p>}
@@ -150,6 +156,31 @@ export function AccountPage({
           <button className="btn btn-solid" type="submit">Save defaults</button>
           {saveState && <p className="state">{saveState}</p>}
         </form>
+      </section>
+
+      <section className="account-panel">
+        <h3>Favorites</h3>
+        {!wishlistProducts.length && <p className="state">No saved products yet.</p>}
+        {wishlistProducts.length > 0 && (
+          <div className="product-grid">
+            {wishlistProducts.map((product) => (
+              <article key={product.id} className="product-card">
+                <img className="product-image" src={product.image} alt={product.name} />
+                <h3>{product.name}</h3>
+                <p>{product.description}</p>
+                <div className="product-foot">
+                  <span>{formatPrice(product.price)}</span>
+                  <div className="actions">
+                    <button className="btn btn-solid mini" disabled={product.inStock === false} onClick={() => onAdd(product)}>
+                      {product.inStock === false ? 'Out' : 'Add'}
+                    </button>
+                    <button className="btn btn-ghost mini" onClick={() => onToggleWishlist(product)}>Remove</button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="account-panel">

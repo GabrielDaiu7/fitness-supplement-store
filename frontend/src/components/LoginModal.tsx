@@ -4,7 +4,7 @@ type LoginModalProps = {
   onClose: () => void;
   onLogin: (email: string, password: string) => Promise<string | null>;
   onRegister: (name: string, email: string, password: string) => Promise<string | null>;
-  onVerifyEmail: (token: string) => Promise<boolean>;
+  onVerifyEmail: (email: string, token: string) => Promise<boolean>;
   onResendVerification: (email: string) => Promise<string | null>;
 };
 
@@ -149,7 +149,7 @@ export function LoginModal({ onClose, onLogin, onRegister, onVerifyEmail, onRese
                   className="btn btn-ghost"
                   type="button"
                   onClick={async () => {
-                    const ok = await onVerifyEmail(verificationToken.trim());
+                    const ok = await onVerifyEmail(email.trim().toLowerCase(), verificationToken.trim());
                     setError(ok ? '' : 'Verification code is invalid.');
                     setSuccess(ok ? 'Email verified successfully.' : '');
                   }}
