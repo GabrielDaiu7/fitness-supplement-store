@@ -19,7 +19,10 @@ export async function initSchema(): Promise<void> {
       reviews JSONB NOT NULL DEFAULT '[]'::jsonb,
       goals JSONB NOT NULL DEFAULT '[]'::jsonb,
       in_stock BOOLEAN NOT NULL DEFAULT true,
+      stock_quantity INTEGER NOT NULL DEFAULT 25,
+      low_stock_threshold INTEGER NOT NULL DEFAULT 5,
       featured BOOLEAN NOT NULL DEFAULT false,
+      supplement_facts JSONB NOT NULL DEFAULT '{}'::jsonb,
       certifications JSONB NOT NULL DEFAULT '[]'::jsonb
     );
 
@@ -33,7 +36,10 @@ export async function initSchema(): Promise<void> {
     ALTER TABLE products ADD COLUMN IF NOT EXISTS servings INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS images JSONB NOT NULL DEFAULT '[]'::jsonb;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS in_stock BOOLEAN NOT NULL DEFAULT true;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity INTEGER NOT NULL DEFAULT 25;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS low_stock_threshold INTEGER NOT NULL DEFAULT 5;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS featured BOOLEAN NOT NULL DEFAULT false;
+    ALTER TABLE products ADD COLUMN IF NOT EXISTS supplement_facts JSONB NOT NULL DEFAULT '{}'::jsonb;
     ALTER TABLE products ADD COLUMN IF NOT EXISTS certifications JSONB NOT NULL DEFAULT '[]'::jsonb;
 
     CREATE TABLE IF NOT EXISTS users (
@@ -127,12 +133,42 @@ export async function initSchema(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS coupons (
+      id SERIAL PRIMARY KEY,
+      code TEXT UNIQUE NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      discount_percent NUMERIC(5,2) NOT NULL CHECK (discount_percent >= 0 AND discount_percent <= 100),
+      min_subtotal NUMERIC(10,2) NOT NULL DEFAULT 0,
+      active BOOLEAN NOT NULL DEFAULT true,
+      expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS order_items (
       id SERIAL PRIMARY KEY,
       order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
       product_id INTEGER NOT NULL REFERENCES products(id),
       quantity INTEGER NOT NULL CHECK (quantity > 0),
       unit_price NUMERIC(10,2) NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS product_reviews (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+      text TEXT NOT NULL,
+      verified_purchase BOOLEAN NOT NULL DEFAULT false,
+      status TEXT NOT NULL DEFAULT 'approved',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (product_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS wishlist_items (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, product_id)
     );
 
     CREATE TABLE IF NOT EXISTS support_tickets (
@@ -154,6 +190,14 @@ export async function initSchema(): Promise<void> {
       payload JSONB NOT NULL DEFAULT '{}'::jsonb,
       run_at TIMESTAMPTZ NOT NULL,
       status TEXT NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      source TEXT NOT NULL DEFAULT 'footer',
+      coupon_code TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);

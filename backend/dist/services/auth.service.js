@@ -69,7 +69,7 @@ async function registerUser(name, email, password) {
     return { conflict: false, user, accessToken, refreshToken, verificationToken, welcomeCoupon };
 }
 async function loginUser(email, password) {
-    const result = await pool_1.pool.query('SELECT id, name, email, password_hash, is_admin as "isAdmin", email_verified as "emailVerified", welcome_coupon as "welcomeCoupon" FROM users WHERE email = $1', [email]);
+    const result = await pool_1.pool.query('SELECT id, name, email, password_hash, is_admin as "isAdmin", email_verified as "emailVerified", welcome_coupon as "welcomeCoupon", welcome_perk_claimed_at as "welcomePerkClaimedAt" FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
     if (!user)
         return null;
@@ -98,6 +98,7 @@ async function logoutUser(token) {
 }
 async function getProfile(userId) {
     const result = await pool_1.pool.query(`SELECT u.id, u.name, u.email, u.is_admin as "isAdmin", u.email_verified as "emailVerified", u.welcome_coupon as "welcomeCoupon",
+            u.welcome_perk_claimed_at as "welcomePerkClaimedAt",
             p.goal, p.diet_type as "dietType", p.training_frequency as "trainingFrequency",
             p.preferred_shipping_address as "preferredShippingAddress", p.preferred_currency as "preferredCurrency",
             p.default_shipping_method as "defaultShippingMethod", p.default_subscribe_frequency as "defaultSubscribeFrequency"
@@ -106,10 +107,10 @@ async function getProfile(userId) {
      WHERE u.id = $1`, [userId]);
     return result.rows[0];
 }
-async function verifyEmailToken(token) {
+async function verifyEmailToken(email, token) {
     const candidate = await pool_1.pool.query(`SELECT id, email, verification_sent_at as "verificationSentAt", verification_attempts as "verificationAttempts"
      FROM users
-     WHERE verification_token = $1`, [token]);
+     WHERE email = $1 AND verification_token = $2`, [email, token]);
     const user = candidate.rows[0];
     if (!user)
         return { ok: false, reason: 'invalid_code' };
@@ -126,10 +127,10 @@ async function verifyEmailToken(token) {
      VALUES ('verify_completed', $1, $2, $3::jsonb)`, [user.id, user.email, JSON.stringify({})]);
     return { ok: true, user: { id: user.id, email: user.email } };
 }
-async function recordVerificationFailure(token) {
+async function recordVerificationFailure(email) {
     await pool_1.pool.query(`UPDATE users
      SET verification_attempts = verification_attempts + 1
-     WHERE verification_token = $1`, [token]);
+     WHERE email = $1 AND email_verified = false`, [email]);
 }
 async function isUserEmailVerified(userId) {
     const result = await pool_1.pool.query('SELECT email_verified as "emailVerified" FROM users WHERE id = $1', [userId]);
@@ -196,20 +197,24 @@ async function updateOnboardingProfile(userId, input) {
     return result.rows[0];
 }
 async function sendWelcomePerkEmail(userId) {
-    const result = await pool_1.pool.query('SELECT email, welcome_coupon as "welcomeCoupon", welcome_perk_claimed_at as "welcomePerkClaimedAt" FROM users WHERE id = $1', [userId]);
-    const user = result.rows[0];
-    if (!user)
-        return null;
-    if (user.welcomePerkClaimedAt) {
+    const claimResult = await pool_1.pool.query(`UPDATE users
+     SET welcome_perk_claimed_at = now()
+     WHERE id = $1 AND welcome_perk_claimed_at IS NULL
+     RETURNING email, welcome_coupon as "welcomeCoupon"`, [userId]);
+    const claimedNow = claimResult.rows[0];
+    if (!claimedNow) {
+        const existing = await pool_1.pool.query('SELECT email, welcome_coupon as "welcomeCoupon" FROM users WHERE id = $1', [userId]);
+        const user = existing.rows[0];
+        if (!user)
+            return null;
         return { email: user.email, coupon: user.welcomeCoupon || 'WELCOME10', alreadyClaimed: true };
     }
-    const coupon = user.welcomeCoupon || 'WELCOME10';
+    const coupon = claimedNow.welcomeCoupon || 'WELCOME10';
     await (0, mailer_service_1.sendEmail)({
-        to: user.email,
+        to: claimedNow.email,
         subject: 'Your Fusion welcome perks',
         text: `Coupon: ${coupon}\nFree shipping starts at $70.\nStarter bundle: http://localhost:5173/category/stacks`,
     });
-    await pool_1.pool.query('UPDATE users SET welcome_perk_claimed_at = now() WHERE id = $1', [userId]);
-    await trackAuthEvent('welcome_perk_emailed', userId, user.email, { coupon });
-    return { email: user.email, coupon, alreadyClaimed: false };
+    await trackAuthEvent('welcome_perk_emailed', userId, claimedNow.email, { coupon });
+    return { email: claimedNow.email, coupon, alreadyClaimed: false };
 }

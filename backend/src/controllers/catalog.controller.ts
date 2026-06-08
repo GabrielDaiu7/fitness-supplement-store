@@ -1,5 +1,13 @@
 import express from 'express';
-import { checkHealth, getProductDetails, listCategories, listProducts } from '../services/catalog.service';
+import {
+  checkHealth,
+  createVerifiedProductReview,
+  getProductDetails,
+  listCategories,
+  listProducts,
+  subscribeNewsletter,
+} from '../services/catalog.service';
+import { AuthedRequest } from '../types/auth';
 
 export async function healthController(_req: express.Request, res: express.Response) {
   try {
@@ -45,5 +53,48 @@ export async function listCategoriesController(_req: express.Request, res: expre
     res.json({ categories });
   } catch {
     res.status(500).json({ ok: false, message: 'Failed to load categories.' });
+  }
+}
+
+export async function newsletterSubscribeController(req: express.Request, res: express.Response) {
+  try {
+    const email = String(req.body?.email ?? '').trim().toLowerCase();
+    const source = String(req.body?.source ?? 'footer').trim() || 'footer';
+    if (!email || !email.includes('@')) {
+      res.status(400).json({ ok: false, message: 'Valid email is required.' });
+      return;
+    }
+    const subscription = await subscribeNewsletter(email, source);
+    res.status(201).json({
+      ok: true,
+      message: 'Newsletter signup saved.',
+      subscription,
+    });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to save newsletter signup.' });
+  }
+}
+
+export async function productReviewController(req: AuthedRequest, res: express.Response) {
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ ok: false, message: 'Unauthorized' });
+      return;
+    }
+    const productId = Number(req.params.id);
+    const rating = Number(req.body?.rating);
+    const text = String(req.body?.text ?? '').trim();
+    if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(rating) || rating < 1 || rating > 5 || text.length < 5) {
+      res.status(400).json({ ok: false, message: 'Rating and review text are required.' });
+      return;
+    }
+    const review = await createVerifiedProductReview(req.user.id, productId, rating, text);
+    if (!review) {
+      res.status(403).json({ ok: false, message: 'Only verified buyers can review this product.' });
+      return;
+    }
+    res.status(201).json({ ok: true, review });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to save review.' });
   }
 }

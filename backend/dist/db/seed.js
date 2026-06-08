@@ -236,9 +236,21 @@ async function seed() {
                             : 'Unflavored';
         const servings = product.category === 'Weight Gainer' ? 16 : product.category === 'Protein' ? 30 : 60;
         const images = [product.image, alternateImagesById[product.id]].filter(Boolean);
+        const stockQuantity = product.id === 3 ? 4 : product.id === 8 ? 0 : 18 + product.id;
+        const supplementFacts = {
+            servingSize: product.category === 'Vitamins' ? '2 capsules' : '1 scoop',
+            servingsPerContainer: servings,
+            highlights: product.category === 'Protein'
+                ? ['25g protein', 'Low sugar', 'Fast mixing']
+                : product.category === 'Creatine'
+                    ? ['5g creatine monohydrate', 'Unflavored', 'Micronized']
+                    : product.category === 'Pre-Workout'
+                        ? ['Caffeine', 'Citrulline', 'Beta-alanine']
+                        : product.ingredients.slice(0, 3),
+        };
         await pool_1.pool.query(`
-      INSERT INTO products (id, name, brand, category, flavor, servings, price, description, image, images, ingredients, usage, faqs, reviews, goals, in_stock, featured, certifications)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18::jsonb)
+      INSERT INTO products (id, name, brand, category, flavor, servings, price, description, image, images, ingredients, usage, faqs, reviews, goals, in_stock, stock_quantity, low_stock_threshold, featured, supplement_facts, certifications)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13::jsonb, $14::jsonb, $15::jsonb, $16, $17, $18, $19, $20::jsonb, $21::jsonb)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         brand = EXCLUDED.brand,
@@ -255,7 +267,10 @@ async function seed() {
         reviews = EXCLUDED.reviews,
         goals = EXCLUDED.goals,
         in_stock = EXCLUDED.in_stock,
+        stock_quantity = EXCLUDED.stock_quantity,
+        low_stock_threshold = EXCLUDED.low_stock_threshold,
         featured = EXCLUDED.featured,
+        supplement_facts = EXCLUDED.supplement_facts,
         certifications = EXCLUDED.certifications;
       `, [
             product.id,
@@ -273,13 +288,23 @@ async function seed() {
             JSON.stringify(product.faqs),
             JSON.stringify(product.reviews),
             JSON.stringify(product.goals),
-            product.inStock,
+            stockQuantity > 0 && product.inStock,
+            stockQuantity,
+            5,
             product.featured,
+            JSON.stringify(supplementFacts),
             JSON.stringify(product.certifications),
         ]);
     }
     const adminPasswordHash = await bcryptjs_1.default.hash('Admin@123', 10);
     await pool_1.pool.query('INSERT INTO users (name, email, password_hash, is_admin) VALUES ($1, $2, $3, true)', ['Fusion Admin', 'admin@fusion.store', adminPasswordHash]);
+    await pool_1.pool.query(`INSERT INTO coupons (code, description, discount_percent, min_subtotal, active)
+     VALUES ($1, $2, $3, $4, true)
+     ON CONFLICT (code) DO UPDATE SET
+       description = EXCLUDED.description,
+       discount_percent = EXCLUDED.discount_percent,
+       min_subtotal = EXCLUDED.min_subtotal,
+       active = EXCLUDED.active`, ['FUSION10', 'Launch offer for first-time shoppers', 10, 0]);
     console.log('Database seeded with products and admin user.');
 }
 seed()

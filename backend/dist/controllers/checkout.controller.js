@@ -22,17 +22,38 @@ async function checkoutController(req, res) {
             res.status(403).json({ ok: false, message: 'Please verify your email before checkout.' });
             return;
         }
-        const items = (req.body?.items ?? []);
+        const rawItems = (req.body?.items ?? []);
         const promoCode = String(req.body?.promoCode ?? '').toUpperCase().trim();
         const shippingInput = req.body?.shipping;
         const subscribeFrequency = req.body?.subscribeFrequency;
         const shippingMethod = String(req.body?.shippingMethod ?? 'standard');
-        if (!Array.isArray(items) || items.length === 0) {
+        const bundleCode = String(req.body?.bundleCode ?? '').trim().toUpperCase();
+        if (!Array.isArray(rawItems) || rawItems.length === 0) {
             res.status(400).json({ ok: false, message: 'Cart is empty.' });
             return;
         }
+        if (rawItems.some((item) => !Number.isInteger(Number(item.id)) ||
+            !Number.isInteger(Number(item.quantity)) ||
+            Number(item.id) <= 0 ||
+            Number(item.quantity) <= 0)) {
+            res.status(400).json({ ok: false, message: 'Cart contains invalid quantities.' });
+            return;
+        }
+        const items = rawItems.map((item) => ({ id: Number(item.id), quantity: Number(item.quantity) }));
         if (!shippingInput) {
             res.status(400).json({ ok: false, message: 'Shipping address is required.' });
+            return;
+        }
+        if (!shippingInput.fullName?.trim() ||
+            !shippingInput.email?.trim() ||
+            !shippingInput.address?.trim() ||
+            !shippingInput.city?.trim() ||
+            !shippingInput.zip?.trim()) {
+            res.status(400).json({ ok: false, message: 'Complete shipping details are required.' });
+            return;
+        }
+        if (!['standard', 'express'].includes(shippingMethod)) {
+            res.status(400).json({ ok: false, message: 'Invalid shipping method.' });
             return;
         }
         const result = await (0, checkout_service_1.createCheckoutOrder)({
@@ -42,6 +63,7 @@ async function checkoutController(req, res) {
             shipping: shippingInput,
             subscribeFrequency,
             shippingMethod,
+            bundleCode,
         });
         res.json({
             ok: true,
@@ -57,7 +79,11 @@ async function checkoutController(req, res) {
             emailSent: true,
         });
     }
-    catch {
+    catch (error) {
+        if (error instanceof checkout_service_1.CheckoutValidationError) {
+            res.status(400).json({ ok: false, message: error.message });
+            return;
+        }
         res.status(500).json({ ok: false, message: 'Checkout failed.' });
     }
 }

@@ -45,6 +45,7 @@ export async function registerController(req: express.Request, res: express.Resp
         isAdmin: result.user.isAdmin,
         emailVerified: false,
         welcomeCoupon: result.welcomeCoupon,
+        welcomePerkClaimedAt: null,
       },
       verification: { required: true, token: exposeToken ? result.verificationToken : undefined },
       welcome: { couponCode: result.welcomeCoupon, freeShippingOver: 70 },
@@ -76,6 +77,7 @@ export async function loginController(req: express.Request, res: express.Respons
         isAdmin: result.user.isAdmin,
         emailVerified: result.user.emailVerified,
         welcomeCoupon: result.user.welcomeCoupon,
+        welcomePerkClaimedAt: result.user.welcomePerkClaimedAt ?? null,
       },
     });
   } catch {
@@ -112,14 +114,15 @@ export async function meController(req: AuthedRequest, res: express.Response) {
 }
 
 export async function verifyEmailController(req: express.Request, res: express.Response) {
+  const email = String(req.body?.email ?? '').trim().toLowerCase();
   const token = String(req.body?.token ?? '').trim();
-  if (!token) {
-    res.status(400).json({ ok: false, message: 'Token required' });
+  if (!email || !token) {
+    res.status(400).json({ ok: false, message: 'Email and token required' });
     return;
   }
-  const verified = await verifyEmailToken(token);
+  const verified = await verifyEmailToken(email, token);
   if (!verified.ok) {
-    await recordVerificationFailure(token);
+    await recordVerificationFailure(email);
     const message =
       verified.reason === 'expired_code'
         ? 'Verification code expired. Request a new code.'

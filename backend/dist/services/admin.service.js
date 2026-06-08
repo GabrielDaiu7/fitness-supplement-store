@@ -9,6 +9,9 @@ exports.addPaymentMethod = addPaymentMethod;
 exports.reorderFromPreviousOrder = reorderFromPreviousOrder;
 exports.createSupportTicket = createSupportTicket;
 exports.getSupportTickets = getSupportTickets;
+exports.getWishlistProducts = getWishlistProducts;
+exports.addWishlistProduct = addWishlistProduct;
+exports.removeWishlistProduct = removeWishlistProduct;
 exports.getAdminProducts = getAdminProducts;
 exports.createAdminProduct = createAdminProduct;
 exports.getAdminOverview = getAdminOverview;
@@ -16,6 +19,9 @@ exports.getAdminFunnelMetrics = getAdminFunnelMetrics;
 exports.getAdminOrders = getAdminOrders;
 exports.updateOrderStatus = updateOrderStatus;
 exports.getAdminUsers = getAdminUsers;
+exports.getAdminCoupons = getAdminCoupons;
+exports.createAdminCoupon = createAdminCoupon;
+exports.updateAdminCoupon = updateAdminCoupon;
 exports.updateAdminProduct = updateAdminProduct;
 const pool_1 = require("../db/pool");
 async function getAccountOrders(userId) {
@@ -100,15 +106,55 @@ async function getSupportTickets(userId) {
      ORDER BY st.created_at DESC`, [userId]);
     return result.rows;
 }
+async function getWishlistProducts(userId) {
+    const result = await pool_1.pool.query(`SELECT p.id, p.name, p.brand, p.category, p.flavor, p.servings, p.price, p.description, p.image, p.images,
+            p.ingredients, p.usage, p.faqs, p.reviews, p.goals, p.in_stock as "inStock",
+            p.stock_quantity as "stockQuantity", p.low_stock_threshold as "lowStockThreshold",
+            p.featured, p.supplement_facts as "supplementFacts", p.certifications
+     FROM wishlist_items wi
+     JOIN products p ON p.id = wi.product_id
+     WHERE wi.user_id = $1
+     ORDER BY wi.created_at DESC`, [userId]);
+    return result.rows;
+}
+async function addWishlistProduct(userId, productId) {
+    await pool_1.pool.query(`INSERT INTO wishlist_items (user_id, product_id)
+     VALUES ($1, $2)
+     ON CONFLICT (user_id, product_id) DO NOTHING`, [userId, productId]);
+    return getWishlistProducts(userId);
+}
+async function removeWishlistProduct(userId, productId) {
+    await pool_1.pool.query('DELETE FROM wishlist_items WHERE user_id = $1 AND product_id = $2', [userId, productId]);
+    return getWishlistProducts(userId);
+}
 async function getAdminProducts() {
-    const result = await pool_1.pool.query(`SELECT id, name, brand, category, flavor, servings, price, description, image, images, in_stock as "inStock", featured
+    const result = await pool_1.pool.query(`SELECT id, name, brand, category, flavor, servings, price, description, image, images, in_stock as "inStock",
+            stock_quantity as "stockQuantity", low_stock_threshold as "lowStockThreshold", featured,
+            supplement_facts as "supplementFacts"
      FROM products ORDER BY id ASC`);
     return result.rows;
 }
 async function createAdminProduct(input) {
-    const result = await pool_1.pool.query(`INSERT INTO products (id, name, brand, category, flavor, servings, price, description, image, images, ingredients, usage, faqs, reviews, goals, in_stock, featured, certifications)
-     VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM products), $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, '[]'::jsonb, ''::text, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, $10, $11, '[]'::jsonb)
-     RETURNING id, name, brand, category, flavor, servings, price, description, image, images, in_stock as "inStock", featured`, [input.name, input.brand, input.category, input.flavor, input.servings, input.price, input.description, input.image, JSON.stringify(input.images), input.inStock, input.featured]);
+    const result = await pool_1.pool.query(`INSERT INTO products (id, name, brand, category, flavor, servings, price, description, image, images, ingredients, usage, faqs, reviews, goals, in_stock, stock_quantity, low_stock_threshold, featured, supplement_facts, certifications)
+     VALUES ((SELECT COALESCE(MAX(id), 0) + 1 FROM products), $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, '[]'::jsonb, ''::text, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, $10, $11, $12, $13, $14::jsonb, '[]'::jsonb)
+     RETURNING id, name, brand, category, flavor, servings, price, description, image, images, in_stock as "inStock",
+               stock_quantity as "stockQuantity", low_stock_threshold as "lowStockThreshold", featured,
+               supplement_facts as "supplementFacts"`, [
+        input.name,
+        input.brand,
+        input.category,
+        input.flavor,
+        input.servings,
+        input.price,
+        input.description,
+        input.image,
+        JSON.stringify(input.images),
+        input.inStock,
+        input.stockQuantity,
+        input.lowStockThreshold,
+        input.featured,
+        JSON.stringify(input.supplementFacts),
+    ]);
     return result.rows[0];
 }
 async function getAdminOverview() {
@@ -174,6 +220,39 @@ async function getAdminUsers() {
      LIMIT 100`);
     return result.rows;
 }
+async function getAdminCoupons() {
+    const result = await pool_1.pool.query(`SELECT id, code, description, discount_percent as "discountPercent", min_subtotal as "minSubtotal",
+            active, expires_at as "expiresAt", created_at as "createdAt"
+     FROM coupons
+     ORDER BY active DESC, id DESC`);
+    return result.rows;
+}
+async function createAdminCoupon(input) {
+    const result = await pool_1.pool.query(`INSERT INTO coupons (code, description, discount_percent, min_subtotal, active, expires_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, code, description, discount_percent as "discountPercent", min_subtotal as "minSubtotal",
+               active, expires_at as "expiresAt", created_at as "createdAt"`, [
+        input.code,
+        input.description,
+        input.discountPercent,
+        input.minSubtotal,
+        input.active,
+        input.expiresAt || null,
+    ]);
+    return result.rows[0];
+}
+async function updateAdminCoupon(id, input) {
+    const result = await pool_1.pool.query(`UPDATE coupons SET
+      description = COALESCE($2, description),
+      discount_percent = COALESCE($3, discount_percent),
+      min_subtotal = COALESCE($4, min_subtotal),
+      active = COALESCE($5, active),
+      expires_at = $6
+     WHERE id = $1
+     RETURNING id, code, description, discount_percent as "discountPercent", min_subtotal as "minSubtotal",
+               active, expires_at as "expiresAt", created_at as "createdAt"`, [id, input.description, input.discountPercent, input.minSubtotal, input.active, input.expiresAt]);
+    return result.rows[0];
+}
 async function updateAdminProduct(id, input) {
     const result = await pool_1.pool.query(`UPDATE products SET
       name = COALESCE($2, name),
@@ -186,8 +265,29 @@ async function updateAdminProduct(id, input) {
       images = COALESCE($9::jsonb, images),
       price = COALESCE($10, price),
       in_stock = COALESCE($11, in_stock),
-      featured = COALESCE($12, featured)
+      stock_quantity = COALESCE($12, stock_quantity),
+      low_stock_threshold = COALESCE($13, low_stock_threshold),
+      featured = COALESCE($14, featured),
+      supplement_facts = COALESCE($15::jsonb, supplement_facts)
      WHERE id = $1
-     RETURNING id, name, brand, category, flavor, servings, price, description, image, images, in_stock as "inStock", featured`, [id, input.name, input.category, input.description, input.image, input.brand, input.flavor, input.servings, input.images ? JSON.stringify(input.images) : null, input.price, input.inStock, input.featured]);
+     RETURNING id, name, brand, category, flavor, servings, price, description, image, images, in_stock as "inStock",
+               stock_quantity as "stockQuantity", low_stock_threshold as "lowStockThreshold", featured,
+               supplement_facts as "supplementFacts"`, [
+        id,
+        input.name,
+        input.category,
+        input.description,
+        input.image,
+        input.brand,
+        input.flavor,
+        input.servings,
+        input.images ? JSON.stringify(input.images) : null,
+        input.price,
+        input.inStock,
+        input.stockQuantity,
+        input.lowStockThreshold,
+        input.featured,
+        input.supplementFacts ? JSON.stringify(input.supplementFacts) : null,
+    ]);
     return result.rows[0];
 }

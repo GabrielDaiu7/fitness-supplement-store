@@ -1,21 +1,27 @@
 import express from 'express';
 import {
   createAdminProduct,
+  createAdminCoupon,
   createSupportTicket,
   getAccountAddresses,
   getAccountOrderDetails,
   getAccountOrders,
+  getWishlistProducts,
   getAdminFunnelMetrics,
+  getAdminCoupons,
   getAdminOrders,
   getAdminOverview,
   getAdminProducts,
   getAdminUsers,
   getPaymentMethods,
   getSupportTickets,
+  addWishlistProduct,
   reorderFromPreviousOrder,
   addAccountAddress,
   addPaymentMethod,
+  removeWishlistProduct,
   updateAdminProduct,
+  updateAdminCoupon,
   updateOrderStatus,
 } from '../services/admin.service';
 import { AuthedRequest } from '../types/auth';
@@ -129,6 +135,36 @@ export async function accountSupportTicketsController(req: AuthedRequest, res: e
   }
 }
 
+export async function accountWishlistController(req: AuthedRequest, res: express.Response) {
+  try {
+    if (!req.user?.id) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+    const products = await getWishlistProducts(req.user.id);
+    res.json({ ok: true, products });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to load wishlist' });
+  }
+}
+
+export async function accountAddWishlistController(req: AuthedRequest, res: express.Response) {
+  try {
+    if (!req.user?.id) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+    const products = await addWishlistProduct(req.user.id, Number(req.params.productId));
+    res.status(201).json({ ok: true, products });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to save wishlist item' });
+  }
+}
+
+export async function accountRemoveWishlistController(req: AuthedRequest, res: express.Response) {
+  try {
+    if (!req.user?.id) return res.status(401).json({ ok: false, message: 'Unauthorized' });
+    const products = await removeWishlistProduct(req.user.id, Number(req.params.productId));
+    res.json({ ok: true, products });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to remove wishlist item' });
+  }
+}
+
 export async function adminProductsController(_req: express.Request, res: express.Response) {
   const products = await getAdminProducts();
   res.json({ ok: true, products });
@@ -146,8 +182,10 @@ export async function adminCreateProductController(req: express.Request, res: ex
     const imagesRaw = Array.isArray(req.body?.images) ? req.body.images : [];
     const images = imagesRaw.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0);
     const price = Number(req.body?.price);
+    const stockQuantity = Number(req.body?.stockQuantity ?? 25);
+    const lowStockThreshold = Number(req.body?.lowStockThreshold ?? 5);
 
-    if (!name || !category || !Number.isFinite(price)) {
+    if (!name || !category || !Number.isFinite(price) || !Number.isFinite(stockQuantity) || !Number.isFinite(lowStockThreshold)) {
       res.status(400).json({ ok: false, message: 'Invalid product payload' });
       return;
     }
@@ -162,8 +200,12 @@ export async function adminCreateProductController(req: express.Request, res: ex
       description,
       image,
       images,
-      inStock: Boolean(req.body?.inStock ?? true),
+      inStock: stockQuantity > 0 && Boolean(req.body?.inStock ?? true),
+      stockQuantity,
+      lowStockThreshold,
       featured: Boolean(req.body?.featured ?? false),
+      supplementFacts:
+        typeof req.body?.supplementFacts === 'object' && req.body?.supplementFacts ? req.body.supplementFacts : {},
     });
 
     res.status(201).json({ ok: true, product });
@@ -224,6 +266,66 @@ export async function adminUsersController(_req: express.Request, res: express.R
   }
 }
 
+export async function adminCouponsController(_req: express.Request, res: express.Response) {
+  try {
+    const coupons = await getAdminCoupons();
+    res.json({ ok: true, coupons });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to load coupons' });
+  }
+}
+
+export async function adminCreateCouponController(req: express.Request, res: express.Response) {
+  try {
+    const code = String(req.body?.code ?? '').trim().toUpperCase();
+    const description = String(req.body?.description ?? '').trim();
+    const discountPercent = Number(req.body?.discountPercent);
+    const minSubtotal = Number(req.body?.minSubtotal ?? 0);
+    const expiresAt = String(req.body?.expiresAt ?? '').trim();
+
+    if (!code || !Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 100 || !Number.isFinite(minSubtotal)) {
+      res.status(400).json({ ok: false, message: 'Invalid coupon payload' });
+      return;
+    }
+
+    const coupon = await createAdminCoupon({
+      code,
+      description,
+      discountPercent,
+      minSubtotal,
+      active: Boolean(req.body?.active ?? true),
+      expiresAt: expiresAt || null,
+    });
+    res.status(201).json({ ok: true, coupon });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to create coupon' });
+  }
+}
+
+export async function adminUpdateCouponController(req: express.Request, res: express.Response) {
+  try {
+    const id = Number(req.params.id);
+    const discountPercent = Number(req.body?.discountPercent);
+    const minSubtotal = Number(req.body?.minSubtotal);
+    const expiresAt = String(req.body?.expiresAt ?? '').trim();
+
+    const coupon = await updateAdminCoupon(id, {
+      description: typeof req.body?.description === 'string' ? req.body.description.trim() : null,
+      discountPercent: Number.isFinite(discountPercent) ? discountPercent : null,
+      minSubtotal: Number.isFinite(minSubtotal) ? minSubtotal : null,
+      active: typeof req.body?.active === 'boolean' ? req.body.active : null,
+      expiresAt: expiresAt || null,
+    });
+    if (!coupon) {
+      res.status(404).json({ ok: false, message: 'Coupon not found' });
+      return;
+    }
+    res.json({ ok: true, coupon });
+  } catch {
+    res.status(500).json({ ok: false, message: 'Failed to update coupon' });
+  }
+}
+
 export async function adminUpdateProductController(req: express.Request, res: express.Response) {
   try {
     const id = Number(req.params.id);
@@ -235,6 +337,8 @@ export async function adminUpdateProductController(req: express.Request, res: ex
     const brandRaw = req.body?.brand;
     const flavorRaw = req.body?.flavor;
     const servingsRaw = Number(req.body?.servings);
+    const stockQuantityRaw = Number(req.body?.stockQuantity);
+    const lowStockThresholdRaw = Number(req.body?.lowStockThreshold);
     const imagesRaw = req.body?.images;
 
     const product = await updateAdminProduct(id, {
@@ -251,7 +355,11 @@ export async function adminUpdateProductController(req: express.Request, res: ex
           : null,
       price: Number.isFinite(price) ? price : null,
       inStock: typeof req.body?.inStock === 'boolean' ? req.body.inStock : null,
+      stockQuantity: Number.isFinite(stockQuantityRaw) ? stockQuantityRaw : null,
+      lowStockThreshold: Number.isFinite(lowStockThresholdRaw) ? lowStockThresholdRaw : null,
       featured: typeof req.body?.featured === 'boolean' ? req.body.featured : null,
+      supplementFacts:
+        typeof req.body?.supplementFacts === 'object' && req.body?.supplementFacts ? req.body.supplementFacts : null,
     });
 
     res.json({ ok: true, product });

@@ -83,11 +83,11 @@ export async function registerUser(name: string, email: string, password: string
 
 export async function loginUser(email: string, password: string) {
   const result = await pool.query(
-    'SELECT id, name, email, password_hash, is_admin as "isAdmin", email_verified as "emailVerified", welcome_coupon as "welcomeCoupon" FROM users WHERE email = $1',
+    'SELECT id, name, email, password_hash, is_admin as "isAdmin", email_verified as "emailVerified", welcome_coupon as "welcomeCoupon", welcome_perk_claimed_at as "welcomePerkClaimedAt" FROM users WHERE email = $1',
     [email]
   );
   const user = result.rows[0] as
-    | { id: number; name: string; email: string; password_hash: string; isAdmin: boolean; emailVerified: boolean; welcomeCoupon?: string }
+    | { id: number; name: string; email: string; password_hash: string; isAdmin: boolean; emailVerified: boolean; welcomeCoupon?: string; welcomePerkClaimedAt?: Date }
     | undefined;
 
   if (!user) return null;
@@ -122,6 +122,7 @@ export async function logoutUser(token?: string) {
 export async function getProfile(userId?: number) {
   const result = await pool.query(
     `SELECT u.id, u.name, u.email, u.is_admin as "isAdmin", u.email_verified as "emailVerified", u.welcome_coupon as "welcomeCoupon",
+            u.welcome_perk_claimed_at as "welcomePerkClaimedAt",
             p.goal, p.diet_type as "dietType", p.training_frequency as "trainingFrequency",
             p.preferred_shipping_address as "preferredShippingAddress", p.preferred_currency as "preferredCurrency",
             p.default_shipping_method as "defaultShippingMethod", p.default_subscribe_frequency as "defaultSubscribeFrequency"
@@ -133,12 +134,12 @@ export async function getProfile(userId?: number) {
   return result.rows[0];
 }
 
-export async function verifyEmailToken(token: string) {
+export async function verifyEmailToken(email: string, token: string) {
   const candidate = await pool.query(
     `SELECT id, email, verification_sent_at as "verificationSentAt", verification_attempts as "verificationAttempts"
      FROM users
-     WHERE verification_token = $1`,
-    [token]
+     WHERE email = $1 AND verification_token = $2`,
+    [email, token]
   );
   const user = candidate.rows[0] as
     | { id: number; email: string; verificationSentAt?: Date; verificationAttempts: number }
@@ -165,12 +166,12 @@ export async function verifyEmailToken(token: string) {
   return { ok: true as const, user: { id: user.id, email: user.email } };
 }
 
-export async function recordVerificationFailure(token: string) {
+export async function recordVerificationFailure(email: string) {
   await pool.query(
     `UPDATE users
      SET verification_attempts = verification_attempts + 1
-     WHERE verification_token = $1`,
-    [token]
+     WHERE email = $1 AND email_verified = false`,
+    [email]
   );
 }
 
@@ -272,22 +273,29 @@ export async function updateOnboardingProfile(
 }
 
 export async function sendWelcomePerkEmail(userId: number) {
-  const result = await pool.query(
-    'SELECT email, welcome_coupon as "welcomeCoupon", welcome_perk_claimed_at as "welcomePerkClaimedAt" FROM users WHERE id = $1',
+  const claimResult = await pool.query(
+    `UPDATE users
+     SET welcome_perk_claimed_at = now()
+     WHERE id = $1 AND welcome_perk_claimed_at IS NULL
+     RETURNING email, welcome_coupon as "welcomeCoupon"`,
     [userId]
   );
-  const user = result.rows[0] as { email: string; welcomeCoupon?: string; welcomePerkClaimedAt?: Date } | undefined;
-  if (!user) return null;
-  if (user.welcomePerkClaimedAt) {
+  const claimedNow = claimResult.rows[0] as { email: string; welcomeCoupon?: string } | undefined;
+  if (!claimedNow) {
+    const existing = await pool.query(
+      'SELECT email, welcome_coupon as "welcomeCoupon" FROM users WHERE id = $1',
+      [userId]
+    );
+    const user = existing.rows[0] as { email: string; welcomeCoupon?: string } | undefined;
+    if (!user) return null;
     return { email: user.email, coupon: user.welcomeCoupon || 'WELCOME10', alreadyClaimed: true as const };
   }
-  const coupon = user.welcomeCoupon || 'WELCOME10';
+  const coupon = claimedNow.welcomeCoupon || 'WELCOME10';
   await sendEmail({
-    to: user.email,
+    to: claimedNow.email,
     subject: 'Your Fusion welcome perks',
     text: `Coupon: ${coupon}\nFree shipping starts at $70.\nStarter bundle: http://localhost:5173/category/stacks`,
   });
-  await pool.query('UPDATE users SET welcome_perk_claimed_at = now() WHERE id = $1', [userId]);
-  await trackAuthEvent('welcome_perk_emailed', userId, user.email, { coupon });
-  return { email: user.email, coupon, alreadyClaimed: false as const };
+  await trackAuthEvent('welcome_perk_emailed', userId, claimedNow.email, { coupon });
+  return { email: claimedNow.email, coupon, alreadyClaimed: false as const };
 }

@@ -9,6 +9,9 @@ exports.accountPaymentMethodsController = accountPaymentMethodsController;
 exports.accountCreatePaymentMethodController = accountCreatePaymentMethodController;
 exports.accountCreateSupportTicketController = accountCreateSupportTicketController;
 exports.accountSupportTicketsController = accountSupportTicketsController;
+exports.accountWishlistController = accountWishlistController;
+exports.accountAddWishlistController = accountAddWishlistController;
+exports.accountRemoveWishlistController = accountRemoveWishlistController;
 exports.adminProductsController = adminProductsController;
 exports.adminCreateProductController = adminCreateProductController;
 exports.adminOverviewController = adminOverviewController;
@@ -16,6 +19,9 @@ exports.adminFunnelController = adminFunnelController;
 exports.adminOrdersController = adminOrdersController;
 exports.adminUpdateOrderStatusController = adminUpdateOrderStatusController;
 exports.adminUsersController = adminUsersController;
+exports.adminCouponsController = adminCouponsController;
+exports.adminCreateCouponController = adminCreateCouponController;
+exports.adminUpdateCouponController = adminUpdateCouponController;
 exports.adminUpdateProductController = adminUpdateProductController;
 const admin_service_1 = require("../services/admin.service");
 async function accountOrdersController(req, res) {
@@ -137,6 +143,39 @@ async function accountSupportTicketsController(req, res) {
         res.status(500).json({ ok: false, message: 'Failed to load support tickets' });
     }
 }
+async function accountWishlistController(req, res) {
+    try {
+        if (!req.user?.id)
+            return res.status(401).json({ ok: false, message: 'Unauthorized' });
+        const products = await (0, admin_service_1.getWishlistProducts)(req.user.id);
+        res.json({ ok: true, products });
+    }
+    catch {
+        res.status(500).json({ ok: false, message: 'Failed to load wishlist' });
+    }
+}
+async function accountAddWishlistController(req, res) {
+    try {
+        if (!req.user?.id)
+            return res.status(401).json({ ok: false, message: 'Unauthorized' });
+        const products = await (0, admin_service_1.addWishlistProduct)(req.user.id, Number(req.params.productId));
+        res.status(201).json({ ok: true, products });
+    }
+    catch {
+        res.status(500).json({ ok: false, message: 'Failed to save wishlist item' });
+    }
+}
+async function accountRemoveWishlistController(req, res) {
+    try {
+        if (!req.user?.id)
+            return res.status(401).json({ ok: false, message: 'Unauthorized' });
+        const products = await (0, admin_service_1.removeWishlistProduct)(req.user.id, Number(req.params.productId));
+        res.json({ ok: true, products });
+    }
+    catch {
+        res.status(500).json({ ok: false, message: 'Failed to remove wishlist item' });
+    }
+}
 async function adminProductsController(_req, res) {
     const products = await (0, admin_service_1.getAdminProducts)();
     res.json({ ok: true, products });
@@ -153,7 +192,9 @@ async function adminCreateProductController(req, res) {
         const imagesRaw = Array.isArray(req.body?.images) ? req.body.images : [];
         const images = imagesRaw.filter((value) => typeof value === 'string' && value.trim().length > 0);
         const price = Number(req.body?.price);
-        if (!name || !category || !Number.isFinite(price)) {
+        const stockQuantity = Number(req.body?.stockQuantity ?? 25);
+        const lowStockThreshold = Number(req.body?.lowStockThreshold ?? 5);
+        if (!name || !category || !Number.isFinite(price) || !Number.isFinite(stockQuantity) || !Number.isFinite(lowStockThreshold)) {
             res.status(400).json({ ok: false, message: 'Invalid product payload' });
             return;
         }
@@ -167,8 +208,11 @@ async function adminCreateProductController(req, res) {
             description,
             image,
             images,
-            inStock: Boolean(req.body?.inStock ?? true),
+            inStock: stockQuantity > 0 && Boolean(req.body?.inStock ?? true),
+            stockQuantity,
+            lowStockThreshold,
             featured: Boolean(req.body?.featured ?? false),
+            supplementFacts: typeof req.body?.supplementFacts === 'object' && req.body?.supplementFacts ? req.body.supplementFacts : {},
         });
         res.status(201).json({ ok: true, product });
     }
@@ -227,6 +271,63 @@ async function adminUsersController(_req, res) {
         res.status(500).json({ ok: false, message: 'Failed to load admin users' });
     }
 }
+async function adminCouponsController(_req, res) {
+    try {
+        const coupons = await (0, admin_service_1.getAdminCoupons)();
+        res.json({ ok: true, coupons });
+    }
+    catch {
+        res.status(500).json({ ok: false, message: 'Failed to load coupons' });
+    }
+}
+async function adminCreateCouponController(req, res) {
+    try {
+        const code = String(req.body?.code ?? '').trim().toUpperCase();
+        const description = String(req.body?.description ?? '').trim();
+        const discountPercent = Number(req.body?.discountPercent);
+        const minSubtotal = Number(req.body?.minSubtotal ?? 0);
+        const expiresAt = String(req.body?.expiresAt ?? '').trim();
+        if (!code || !Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 100 || !Number.isFinite(minSubtotal)) {
+            res.status(400).json({ ok: false, message: 'Invalid coupon payload' });
+            return;
+        }
+        const coupon = await (0, admin_service_1.createAdminCoupon)({
+            code,
+            description,
+            discountPercent,
+            minSubtotal,
+            active: Boolean(req.body?.active ?? true),
+            expiresAt: expiresAt || null,
+        });
+        res.status(201).json({ ok: true, coupon });
+    }
+    catch {
+        res.status(500).json({ ok: false, message: 'Failed to create coupon' });
+    }
+}
+async function adminUpdateCouponController(req, res) {
+    try {
+        const id = Number(req.params.id);
+        const discountPercent = Number(req.body?.discountPercent);
+        const minSubtotal = Number(req.body?.minSubtotal);
+        const expiresAt = String(req.body?.expiresAt ?? '').trim();
+        const coupon = await (0, admin_service_1.updateAdminCoupon)(id, {
+            description: typeof req.body?.description === 'string' ? req.body.description.trim() : null,
+            discountPercent: Number.isFinite(discountPercent) ? discountPercent : null,
+            minSubtotal: Number.isFinite(minSubtotal) ? minSubtotal : null,
+            active: typeof req.body?.active === 'boolean' ? req.body.active : null,
+            expiresAt: expiresAt || null,
+        });
+        if (!coupon) {
+            res.status(404).json({ ok: false, message: 'Coupon not found' });
+            return;
+        }
+        res.json({ ok: true, coupon });
+    }
+    catch {
+        res.status(500).json({ ok: false, message: 'Failed to update coupon' });
+    }
+}
 async function adminUpdateProductController(req, res) {
     try {
         const id = Number(req.params.id);
@@ -238,6 +339,8 @@ async function adminUpdateProductController(req, res) {
         const brandRaw = req.body?.brand;
         const flavorRaw = req.body?.flavor;
         const servingsRaw = Number(req.body?.servings);
+        const stockQuantityRaw = Number(req.body?.stockQuantity);
+        const lowStockThresholdRaw = Number(req.body?.lowStockThreshold);
         const imagesRaw = req.body?.images;
         const product = await (0, admin_service_1.updateAdminProduct)(id, {
             name: typeof nameRaw === 'string' ? nameRaw.trim() : null,
@@ -252,7 +355,10 @@ async function adminUpdateProductController(req, res) {
                 : null,
             price: Number.isFinite(price) ? price : null,
             inStock: typeof req.body?.inStock === 'boolean' ? req.body.inStock : null,
+            stockQuantity: Number.isFinite(stockQuantityRaw) ? stockQuantityRaw : null,
+            lowStockThreshold: Number.isFinite(lowStockThresholdRaw) ? lowStockThresholdRaw : null,
             featured: typeof req.body?.featured === 'boolean' ? req.body.featured : null,
+            supplementFacts: typeof req.body?.supplementFacts === 'object' && req.body?.supplementFacts ? req.body.supplementFacts : null,
         });
         res.json({ ok: true, product });
     }
